@@ -1,0 +1,17 @@
+PROJECT_ROOT/
+│
+├── docs/
+│   ├── web_scraping_ai_workflow.md
+│   ├── architecture.md
+│   ├── roadmap.md
+│   ├── api_design.md
+│   └── datasets.md
+│
+├── crawler/
+├── extractor/
+├── ai_engine/
+├── storage/
+├── dashboard/
+├── api/
+├── tests/
+└── README.md
