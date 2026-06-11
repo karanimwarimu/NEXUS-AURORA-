@@ -1,0 +1,22 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Host: https://www.livescore.com
+Sitemap: https://www.livescore.com/sitemap.xml
+
+User-agent: barkrowler
+Disallow: /
+
+User-agent: SiteAuditBot
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /en/news/
+Disallow: /pt/news/

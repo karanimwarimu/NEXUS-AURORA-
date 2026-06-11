@@ -1,0 +1,24 @@
+Content-Length: 2176
+Vary: Accept-Encoding
+Content-Encoding: gzip
+Edge-Control: max-age=86400
+Content-Type: text/plain; charset=utf-8
+Reporting-Endpoints: coop_report="https://www.facebook.com/browser_reporting/coop/?minimize=0", default="https://www.facebook.com/ajax/browser_error_reports/?device_level=unknown&brsid=7650231354579152911&cpp=C3&cv=1041289984&st=1781208290175", permissions_policy="https://www.facebook.com/ajax/browser_error_reports/"
+Report-To: {"max_age":2592000,"endpoints":[{"url":"https:\/\/www.facebook.com\/browser_reporting\/coop\/?minimize=0"}],"group":"coop_report","include_subdomains":true}, {"max_age":259200,"endpoints":[{"url":"https:\/\/www.facebook.com\/ajax\/browser_error_reports\/?device_level=unknown&brsid=7650231354579152911&cpp=C3&cv=1041289984&st=1781208290175"}]}, {"max_age":21600,"endpoints":[{"url":"https:\/\/www.facebook.com\/ajax\/browser_error_reports\/"}],"group":"permissions_policy"}
+Content-Security-Policy: default-src blob: 'self' https://*.fbsbx.com *.facebook.com *.fbcdn.net *.whatsapp.com *.whatsapp.net;script-src *.facebook.com *.fbcdn.net 127.0.0.1:* 'nonce-iWJBoHYl' blob: 'self' 'wasm-unsafe-eval';style-src *.fbcdn.net data: *.facebook.com 'unsafe-inline';connect-src *.facebook.com facebook.com *.fbcdn.net wss://*.facebook.com:* wss://*.whatsapp.com:* wss://*.fbcdn.net attachment.fbsbx.com ws://localhost:* blob: *.cdninstagram.com 'self' http://localhost:3103 wss://gateway.facebook.com wss://edge-chat.facebook.com wss://snaptu-d.facebook.com wss://kaios-d.facebook.com/ v.whatsapp.net *.fbsbx.com *.fb.com *.instagram.com;font-src data: *.facebook.com *.fbcdn.net *.fbsbx.com;img-src *.fbcdn.net *.facebook.com data: https://*.fbsbx.com facebook.com *.cdninstagram.com fbsbx.com fbcdn.net blob: android-webview-video-poster: *.whatsapp.net *.fb.com *.oculuscdn.com https://trustly.one/ https://*.trustly.one/ https://paywithmybank.com/ https://*.paywithmybank.com/;media-src *.cdninstagram.com blob: *.fbcdn.net *.fbsbx.com www.facebook.com *.facebook.com data:;child-src data: blob: 'self' https://*.fbsbx.com *.facebook.com *.fbcdn.net;frame-src *.facebook.com *.fbsbx.com fbsbx.com data: www.instagram.com *.fbcdn.net accounts.meta.com *.accounts.meta.com https://trustly.one/ https://*.trustly.one/ https://paywithmybank.com/ https://*.paywithmybank.com/;manifest-src data: blob: 'self' https://*.fbsbx.com *.facebook.com *.fbcdn.net;object-src data: blob: 'self' https://*.fbsbx.com *.facebook.com *.fbcdn.net;worker-src blob: *.facebook.com data:;block-all-mixed-content;upgrade-insecure-requests;report-uri https://www.facebook.com/csp/reporting/?m=c&minimize=0;
+X-Frame-Options: DENY
+Set-Login: logged-out
+Document-Policy: force-load-at-top
+Document-Policy: include-js-call-stacks-in-crash-reports
+Permissions-Policy: accelerometer=(), attribution-reporting=(self), autoplay=(), bluetooth=(), browsing-topics=(self), camera=(self "https://www.fbsbx.com"), ch-device-memory=(), ch-downlink=(), ch-dpr=(), ch-ect=(), ch-rtt=(), ch-save-data=(), ch-ua-arch=(), ch-ua-bitness=(), ch-viewport-height=(), ch-viewport-width=(), ch-width=(), clipboard-read=(self), clipboard-write=(self), compute-pressure=(), display-capture=(self), encrypted-media=(self), fullscreen=(self), gamepad=*, geolocation=(self), gyroscope=(), hid=(), idle-detection=(), interest-cohort=(self), keyboard-map=(), local-fonts=(), magnetometer=(), microphone=(self), midi=(), otp-credentials=(), payment=(), picture-in-picture=(self), private-state-token-issuance=(), publickey-credentials-get=(self), screen-wake-lock=(), serial=(), shared-storage=(), shared-storage-select-url=(), private-state-token-redemption=(), usb=(), unload=(self), window-management=(), xr-spatial-tracking=(self);report-to="permissions_policy"
+Cross-Origin-Resource-Policy: same-origin
+Cross-Origin-Opener-Policy: same-origin-allow-popups
+Pragma: no-cache
+Cache-Control: private, no-cache, no-store, must-revalidate
+Expires: Fri, 12 Jun 2026 20:04:50 +0000
+X-Content-Type-Options: nosniff
+X-Xss-Protection: 0
+Origin-Agent-Cluster: ?1
+Strict-Transport-Security: max-age=15552000; preload
+X-Fb-Debug: 5K5OzdTZe+HfD/MZkhXBNuYsFhrrKLUliT46F4RZzBLGLeZ/xySAj2mxMRSbowfBtETj+88tE4MJpdhfkOZpDQ==
+Date: Thu, 11 Jun 2026 20:04:50 GMT

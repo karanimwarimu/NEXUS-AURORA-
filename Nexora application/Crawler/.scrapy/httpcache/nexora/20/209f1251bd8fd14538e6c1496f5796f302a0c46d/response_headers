@@ -1,0 +1,16 @@
+Content-Length: 2315102
+Date: Thu, 11 Jun 2026 20:47:36 GMT
+Content-Type: application/pdf
+X-Content-Type-Options: nosniff
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=xI5ZS3pqOEUp8p0avFM86peMLoYHy6c5VaEWAZbu62ZAF1TotRpKtoIZe2UYhvWyBW%2BcF7qF4l59E2zqG1G4F3iZKZNE%2BcAmc3CUxzOBgwbAfo8E2zv18irfWJzJ5N6%2BPoiqVR%2B6Izc%3D"}]}
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Access-Control-Allow-Origin: *
+Cache-Control: public, max-age=0, must-revalidate
+Etag: "467302fc08484bc10d4085e3cc4b723a"
+Referrer-Policy: strict-origin-when-cross-origin
+Vary: accept-encoding
+Server: cloudflare
+Accept-Ranges: bytes
+Cf-Cache-Status: MISS
+Cf-Ray: a0a378ce38c1021f-NBO
+Alt-Svc: h3=":443"; ma=86400

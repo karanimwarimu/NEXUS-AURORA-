@@ -1,0 +1,10 @@
+Content-Length: 0
+Server: openresty/1.21.4.1
+Location: /en/
+X-Cache-Status: MISS
+Strict-Transport-Security: max-age=31536000
+Via: 1.1 google
+Date: Thu, 11 Jun 2026 20:48:41 GMT
+Cache-Control: public, max-age=3600, s-maxage=3600
+Age: 1119
+Alt-Svc: h3=":443"; ma=2592000

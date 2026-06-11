@@ -1,0 +1,16 @@
+Content-Length: 19692
+Server: openresty/1.21.4.1
+X-Frame-Options: SAMEORIGIN
+Content-Security-Policy: frame-ancestors 'self' https://app.contentful.com
+X-Cache-Status: MISS
+Strict-Transport-Security: max-age=31536000
+Via: 1.1 google
+Content-Encoding: br
+Accept-Ranges: none
+Date: Thu, 11 Jun 2026 20:13:44 GMT
+Cache-Control: public, s-maxage=3600, max-age=3600, stale-while-revalidate
+Etag: W/"zqaq2byr2j26n9"
+Content-Type: text/html; charset=utf-8
+Vary: Accept-Encoding
+Age: 2739
+Alt-Svc: h3=":443"; ma=2592000

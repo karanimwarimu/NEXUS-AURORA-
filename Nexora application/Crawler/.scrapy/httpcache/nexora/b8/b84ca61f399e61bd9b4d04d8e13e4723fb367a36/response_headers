@@ -1,0 +1,16 @@
+Content-Length: 25746
+Server: openresty/1.21.4.1
+X-Frame-Options: SAMEORIGIN
+Permissions-Policy: camera=(), microphone=(), payment=()
+X-Cache-Status: MISS
+Strict-Transport-Security: max-age=31536000
+Via: 1.1 google
+Content-Encoding: br
+Accept-Ranges: none
+Date: Thu, 11 Jun 2026 19:17:24 GMT
+Cache-Control: public, s-maxage=43200, max-age=43200, stale-while-revalidate
+Etag: W/"sxfzx0sr1q32y0"
+Content-Type: text/html; charset=utf-8
+Vary: Accept-Encoding
+Age: 6262
+Alt-Svc: h3=":443"; ma=2592000

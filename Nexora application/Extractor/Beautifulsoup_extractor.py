@@ -3,7 +3,7 @@
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
-from Web_fetcher import fetch_html
+
 import logging
 logging.basicConfig(
     level=logging.INFO,

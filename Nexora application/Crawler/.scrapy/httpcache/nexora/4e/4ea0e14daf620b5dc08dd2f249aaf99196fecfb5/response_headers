@@ -1,0 +1,12 @@
+Content-Length: 21
+Server: openresty/1.21.4.1
+Date: Thu, 11 Jun 2026 21:05:33 GMT
+X-Frame-Options: SAMEORIGIN
+Content-Security-Policy: frame-ancestors 'self' https://app.contentful.com
+Cache-Control: public, max-age=900, s-maxage=900
+Location: /en-gb/betting-sites/
+Refresh: 0;url=/en-gb/betting-sites/
+X-Cache-Status: MISS
+Strict-Transport-Security: max-age=31536000
+Via: 1.1 google
+Alt-Svc: h3=":443"; ma=2592000

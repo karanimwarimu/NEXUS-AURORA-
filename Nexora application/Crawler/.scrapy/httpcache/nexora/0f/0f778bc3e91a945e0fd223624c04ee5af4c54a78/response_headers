@@ -1,0 +1,22 @@
+Server: nginx
+Date: Thu, 11 Jun 2026 20:46:53 GMT
+Content-Type: text/plain
+Last-Modified: Tue, 14 Apr 2026 23:02:06 GMT
+Etag: W/"69dec76e-1bea5"
+Expires: Thu, 18 Jun 2026 20:46:53 GMT
+Cache-Control: max-age=604800,private
+Content-Encoding: gzip
+Strict-Transport-Security: max-age=31536000
+X-Content-Type-Options: nosniff
+X-Frame-Options: sameorigin
+Content-Security-Policy: frame-ancestors 'self'
+X-Li-Fabric: prod-ltx1
+X-Li-Pop: gcp-prod-ltx1-x
+X-Li-Proto: http/1.1
+X-Li-Uuid: AAZUAHXVS5q/gwzpDHqbxA==
+Set-Cookie: bcookie="v=2&9149c9b5-a5f1-45f2-8854-856566a3b242"; domain=.linkedin.com; Path=/; Secure; Expires=Fri, 11-Jun-2027 20:46:53 GMT; SameSite=None
+Set-Cookie: bscookie="v=1&202606112046536c04c4e7-a36b-4f18-8149-703ddec9f5b5AQFuFrg5Y_7d055yKdZbZX64WhSqj-Dd"; domain=.www.linkedin.com; Path=/; Secure; Expires=Fri, 11-Jun-2027 20:46:53 GMT; HttpOnly; SameSite=None
+Via: 1.1 google
+X-Gcp-Trace-Id: 16ba5afa8b5b99398292bbb81378b50a
+X-Colo-Gcp: PROD-JNB
+Alt-Svc: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000

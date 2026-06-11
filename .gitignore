@@ -1,2 +1,6 @@
 #ignore all in output
 output/*
+
+
+#ignore all in output in the nexora application folder 
+Nexora application/output/*

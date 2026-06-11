@@ -1,0 +1,13 @@
+Content-Length: 48
+Date: Thu, 11 Jun 2026 20:47:22 GMT
+Content-Type: text/plain;charset=UTF-8
+X-Content-Type-Options: nosniff
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=na%2BbHcGa%2FmprPi%2FgRXNwBK4iDYKBfJxMv3RJXqN%2BGm4HH4WARQIIAbxMnXOLoZi5%2Bp3ZjKq3SYBg3mZ%2BO7sK5ssBlJfOgSbLPT7c28zo3AhDWkZbVDbqJsx%2FzqTIV5bmUa4bOkr9e74%3D"}]}
+Location: /realpython-media-kit-2026-q1.pdf
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Access-Control-Allow-Origin: *
+Referrer-Policy: strict-origin-when-cross-origin
+Server: cloudflare
+Cf-Cache-Status: DYNAMIC
+Cf-Ray: a0a378781b55021f-NBO
+Alt-Svc: h3=":443"; ma=86400
