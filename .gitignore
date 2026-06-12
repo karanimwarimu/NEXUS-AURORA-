@@ -4,3 +4,6 @@ output/*
 
 #ignore all in output in the nexora application folder 
 Nexora application/output/*
+
+#ignore all in output in the nexora application folder
+Nexora application/Crawler/nexora_crawler/output/*

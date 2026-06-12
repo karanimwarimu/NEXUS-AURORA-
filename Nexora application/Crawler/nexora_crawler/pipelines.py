@@ -31,11 +31,13 @@ _PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..")
 )
 if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
+    sys.path.insert(0, _PROJECT_ROOT) 
+# noqa: E402
+from   Extractor.Beautifulsoup_extractor import extract_with_bs4
+from  Extractor.Trafilatura_extractor import extract_with_trafilatura
 
+from Extractor.style_extractor import extract_styles  # noqa: E402
 
-from Extractor.Beautifulsoup_extractor import extract_with_bs4
-from Extractor.Trafilatura_extractor import extract_with_trafilatura
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Pipeline 1 — Extraction  (order: 100)
@@ -73,6 +75,47 @@ class NexoraExtractionPipeline:
             f"Extracted → '{item.get('title', '')[:50]}' | "
             f"clean_words={traf_data.get('word_count_clean', 0)}"
         )
+        return item
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pipeline 1.5 — Style & Theme Extraction  (order: 150)
+# ─────────────────────────────────────────────────────────────────────────────
+class NexoraStylePipeline:
+    """
+    Extracts visual design intelligence from raw HTML.
+
+    Inputs  (from item): item['html'], item['url']
+    Outputs (added to item): item['styles'] — a dict containing:
+        colors            list of hex/rgb colors found in CSS
+        fonts             list of font family names
+        framework         detected CSS framework (tailwind/bootstrap/etc)
+        theme             dark / light / unknown
+        has_animations    bool — any CSS/JS animation signals found
+        layout_type       flex / grid / float / table / unknown
+        inline_css_length total characters of inline CSS
+        linked_stylesheets list of external stylesheet hrefs
+
+    Why order 150 (after 100, before 200):
+      - Needs item['html'] which pipeline 100 confirms is valid text
+      - Must run before pipeline 200 so styles are included in saved JSON/CSV
+      - In Phase 3, item['html'] will be Playwright-rendered DOM — richer results,
+        same function call, no changes needed here
+    """
+
+    def process_item(self, item, spider):
+        html = item.get("html", "")
+        url  = item.get("url", "")
+
+        if not html:
+            item["styles"] = {}
+            return item
+
+        item["styles"] = extract_styles(html, url)
+
+        framework = item["styles"].get("framework", "unknown")
+        theme     = item["styles"].get("theme", "unknown")
+        log.info(f"Styles → framework={framework} | theme={theme}")
         return item
 
 
@@ -146,6 +189,8 @@ class NexoraDatasetPipeline:
         "url", "title", "author", "date", "language",
         "word_count_raw", "word_count_clean",
         "images_count", "links_count",
+        # style fields
+        "framework", "theme", "layout_type", "has_animations", "fonts",
         "playwright_used", "crawled_at", "depth",
     ]
 
@@ -167,6 +212,7 @@ class NexoraDatasetPipeline:
         log.info("Master dataset file closed.")
 
     def process_item(self, item, spider):
+        styles = item.get("styles", {}) or {}
         row = {
             "url":              item.get("url", ""),
             "title":            item.get("title", ""),
@@ -177,6 +223,12 @@ class NexoraDatasetPipeline:
             "word_count_clean": item.get("word_count_clean", 0),
             "images_count":     len(item.get("images", []) or []),
             "links_count":      len(item.get("internal_links", []) or []),
+            # style columns
+            "framework":        styles.get("framework", "unknown"),
+            "theme":            styles.get("theme", "unknown"),
+            "layout_type":      styles.get("layout_type", "unknown"),
+            "has_animations":   styles.get("has_animations", False),
+            "fonts":            ", ".join(styles.get("fonts", [])),
             "playwright_used":  item.get("playwright_used", False),
             "crawled_at":       item.get("crawled_at", ""),
             "depth":            item.get("depth", 0),

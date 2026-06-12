@@ -3,43 +3,59 @@ nexora_crawler/settings.py
 ===========================
 Central configuration for the Scrapy crawling engine.
 
-Every value here is documented with WHY it exists, not just what it does.
-Phase 3 additions are clearly marked so you know exactly what to uncomment.
+Every value here is documented with WHY it exists.
+Phase 3 additions are clearly marked — uncomment when ready.
 """
 
 # ── Identity ──────────────────────────────────────────────────────────────────
-BOT_NAME    = "nexora_crawler"
-SPIDER_MODULES      = ["nexora_crawler.spiders"]
-NEWSPIDER_MODULE    = "nexora_crawler.spiders"
+BOT_NAME         = "nexora_crawler"
+SPIDER_MODULES   = ["nexora_crawler.spiders"]
+NEWSPIDER_MODULE = "nexora_crawler.spiders"
+
+# ── Depth control — DEFAULT: single page only ────────────────────────────────
+# 0 = fetch the seed URL only (default — safe, predictable)
+# 1 = seed + all links on that page
+# 2 = one more hop (can produce hundreds of pages on large sites)
+# Override per-run: scrapy crawl nexora -a depth=1
+# This is the HARD CEILING. Spider argument cannot exceed this value.
+DEPTH_LIMIT = 0
 
 # ── Politeness — CRITICAL for responsible crawling ───────────────────────────
-# Respect robots.txt — never disable this unless you have explicit permission
 ROBOTSTXT_OBEY = True
 
-# Minimum delay between requests to the SAME domain (seconds).
-# Prevents hammering servers. Scrapy will auto-randomise between
-# DOWNLOAD_DELAY and 2x DOWNLOAD_DELAY when RANDOMIZE_DOWNLOAD_DELAY=True.
-DOWNLOAD_DELAY = 1.5
-RANDOMIZE_DOWNLOAD_DELAY = True
+# Base delay between requests to the same domain (seconds).
+# Actual delay is randomised between DOWNLOAD_DELAY and 2× DOWNLOAD_DELAY.
+DOWNLOAD_DELAY            = 1.5
+RANDOMIZE_DOWNLOAD_DELAY  = True
 
-# Max concurrent requests across ALL domains
-CONCURRENT_REQUESTS = 8
+# Concurrent request caps — keep conservative for single-site use
+CONCURRENT_REQUESTS               = 4
+CONCURRENT_REQUESTS_PER_DOMAIN    = 1   # one request at a time per domain
 
-# Max concurrent requests to a SINGLE domain — keeps us polite per host
-CONCURRENT_REQUESTS_PER_DOMAIN = 2
-
-# Request timeout — abort if server doesn't respond within N seconds
+# Request timeout
 DOWNLOAD_TIMEOUT = 20
 
-# ── Crawl depth control ───────────────────────────────────────────────────────
-# How many link-hops from seed URLs to follow.
-# 0 = seed only, 1 = seed + direct links, 2 = one more hop, etc.
-# Keep low during development; raise for production crawls.
-DEPTH_LIMIT = 2
+# ── AutoThrottle — adapts delay based on server response time ─────────────────
+# Automatically slows down if the server is struggling.
+# Fixes the static-delay issue flagged in the assessment.
+AUTOTHROTTLE_ENABLED            = True
+AUTOTHROTTLE_START_DELAY        = 1.0   # initial delay
+AUTOTHROTTLE_MAX_DELAY          = 30.0  # never exceed this
+AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0   # aim for 1 parallel request per domain
+AUTOTHROTTLE_DEBUG              = False  # set True to see delay adjustments in logs
+
+# ── Retry — handles transient failures (503, 429, timeouts) ──────────────────
+RETRY_ENABLED    = True
+RETRY_TIMES      = 3
+RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429]
+# Scrapy default retry uses fixed delay; exponential backoff added in middleware
 
 # ── Duplicate URL filter ──────────────────────────────────────────────────────
-# Scrapy's built-in filter — prevents re-crawling the same URL.
 DUPEFILTER_CLASS = "scrapy.dupefilters.RFPDupeFilter"
+
+# ── Security ──────────────────────────────────────────────────────────────────
+# Disable Telnet console — security risk, not needed for development
+TELNETCONSOLE_ENABLED = False
 
 # ── Middlewares ───────────────────────────────────────────────────────────────
 SPIDER_MIDDLEWARES = {
@@ -49,26 +65,27 @@ SPIDER_MIDDLEWARES = {
 DOWNLOADER_MIDDLEWARES = {
     # Disable Scrapy's default User-Agent middleware
     "scrapy.downloadermiddlewares.useragent.UserAgentMiddleware": None,
-    # Enable our rotating User-Agent middleware
+    # Rotating User-Agent
     "nexora_crawler.middlewares.NexoraUserAgentMiddleware": 500,
+    # Content-type guard — rejects PDFs, images, XML before they hit the pipeline
+    "nexora_crawler.middlewares.ContentTypeFilterMiddleware": 510,
     # Phase 3: uncomment when scrapy-playwright is installed
     # "nexora_crawler.middlewares.PlaywrightRoutingMiddleware": 600,
 }
 
 # ── Item Pipelines ────────────────────────────────────────────────────────────
-# Numbers = execution order (lower runs first)
 ITEM_PIPELINES = {
-    "nexora_crawler.pipelines.NexoraExtractionPipeline": 100,  # Phase 1 hook
-    "nexora_crawler.pipelines.NexoraExportPipeline":     200,  # per-page files
-    "nexora_crawler.pipelines.NexoraDatasetPipeline":    300,  # master CSV
+    "nexora_crawler.pipelines.NexoraExtractionPipeline": 100,
+    "nexora_crawler.pipelines.NexoraStylePipeline":      150,  # NEW — style/theme
+    "nexora_crawler.pipelines.NexoraExportPipeline":     200,
+    "nexora_crawler.pipelines.NexoraDatasetPipeline":    300,
 }
 
-# ── HTTP Cache (speeds up development re-runs) ────────────────────────────────
-# Caches responses to disk so re-running the spider doesn't re-fetch pages.
-# Disable in production or when you need fresh data.
-HTTPCACHE_ENABLED      = True
-HTTPCACHE_EXPIRATION_SECS = 3600        # cache valid for 1 hour
-HTTPCACHE_DIR          = "httpcache"
+# ── HTTP Cache (dev only — speeds up re-runs without re-fetching) ─────────────
+# Disable when you need fresh data or in production.
+HTTPCACHE_ENABLED           = True
+HTTPCACHE_EXPIRATION_SECS   = 3600
+HTTPCACHE_DIR               = "httpcache"
 HTTPCACHE_IGNORE_HTTP_CODES = [503, 504, 400, 403, 404, 408]
 
 # ── Request headers ───────────────────────────────────────────────────────────
@@ -81,13 +98,7 @@ DEFAULT_REQUEST_HEADERS = {
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_LEVEL = "INFO"
 
-# ── Feed exports (optional bulk export) ──────────────────────────────────────
-# Uncomment to also export all items to a single JSONL file via Scrapy's feed
-# FEEDS = {
-#     "output/scrapy_feed.jsonl": {"format": "jsonlines", "encoding": "utf8"},
-# }
-
-# ── Phase 3 Playwright settings (add when ready) ─────────────────────────────
+# ── Phase 3 Playwright settings (uncomment when ready) ───────────────────────
 # DOWNLOAD_HANDLERS = {
 #     "http":  "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
 #     "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
