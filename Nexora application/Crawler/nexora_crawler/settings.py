@@ -92,7 +92,7 @@ ITEM_PIPELINES = {
 
 # ── HTTP Cache (dev only — speeds up re-runs without re-fetching) ─────────────
 # Disable when you need fresh data or in production.
-HTTPCACHE_ENABLED           = True
+HTTPCACHE_ENABLED           = False
 HTTPCACHE_EXPIRATION_SECS   = 3600
 HTTPCACHE_DIR               = "httpcache"
 HTTPCACHE_IGNORE_HTTP_CODES = [503, 504, 400, 403, 404, 408]
