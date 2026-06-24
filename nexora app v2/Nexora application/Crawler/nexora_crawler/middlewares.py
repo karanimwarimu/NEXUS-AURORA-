@@ -3,23 +3,34 @@ nexora_crawler/middlewares.py
 ==============================
 Downloader and spider middlewares.
 
+
 Active in Phase 2:
     500  NexoraUserAgentMiddleware      — rotates User-Agent strings
-    510  ContentTypeFilterMiddleware    — rejects non-HTML before pipeline (NEW)
+    510  ContentTypeFilterMiddleware    — rejects non-HTML before pipeline
+
 
 Stubbed for Phase 3:
     600  PlaywrightRoutingMiddleware    — routes JS-heavy requests to browser
+
+
+Debug mode:
+    Run with --loglevel=DEBUG to see every middleware decision with reason.
+    e.g.  scrapy crawl nexora -a sitemap="..." --loglevel=DEBUG
 """
+
 
 import logging
 import random
 import re
+from urllib.parse import urlparse
+
 from scrapy import signals
 from scrapy.exceptions import IgnoreRequest
 
+
 log = logging.getLogger("nexora.middleware")
 
-# ── User-Agent pool ───────────────────────────────────────────────────────────
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -29,7 +40,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
 ]
 
-# ── URL patterns to always skip ───────────────────────────────────────────────
+
 BLOCKED_PATH_PATTERNS = [
     r"/account/",
     r"/login",
@@ -53,64 +64,80 @@ _BLOCKED_RE = re.compile("|".join(BLOCKED_PATH_PATTERNS), re.IGNORECASE)
 
 
 class NexoraUserAgentMiddleware:
-    """Rotates User-Agent on every outgoing request."""
+    """Rotates User-Agent strings on every request."""
 
-    # Scrapy 2.16+ may call these without passing `spider`.
-    def process_request(self, request, spider=None):
-        agent = random.choice(USER_AGENTS)
-        request.headers["User-Agent"] = agent
+    def __init__(self, crawler=None):
+        self.crawler = crawler
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler)
+
+    async def process_request(self, request):
+        """Scrapy 2.16+ async signature — no spider argument."""
+        ua = random.choice(USER_AGENTS)
+        request.headers["User-Agent"] = ua
+        log.debug("[UA] %s → %s", _short(request.url), ua[:40])
         return None
-
 
 
 class ContentTypeFilterMiddleware:
-    """Rejects non-HTML responses before they reach the spider."""
+    """Rejects non-HTML responses and blocked URL patterns."""
 
-    # Scrapy 2.16+ may call these without passing `spider`.
-    def process_request(self, request, spider=None):
+    def __init__(self, crawler=None):
+        self.crawler = crawler
 
-        from urllib.parse import urlparse
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler)
+
+    async def process_request(self, request):
+        """Block requests to URLs matching blocked patterns."""
         path = urlparse(request.url).path
-
         if _BLOCKED_RE.search(path):
-            log.debug(f"Blocked by URL pattern: {request.url}")
+            log.debug("[BLOCK-req] pattern match → %s", request.url)
             raise IgnoreRequest(f"Blocked URL pattern: {request.url}")
+        log.debug("[ALLOW-req] %s", _short(request.url))
         return None
 
-    def process_response(self, request, response, spider=None):
+    async def process_response(self, request, response):
+        """Scrapy 2.16+ async signature — no spider argument."""
+        url = request.url
 
-        content_type = response.headers.get("Content-Type", b"").decode(
-            "utf-8", "ignore"
-        ).lower()
-
-        if "text/html" in content_type or "xhtml" in content_type:
-            return response
-        if not content_type:
+        # sitemap XML must reach parse_sitemap_index (text/xml / application/xml)
+        if request.meta.get("from_sitemap"):
+            log.debug("[ALLOW-resp] sitemap pass-through → %s", _short(url))
             return response
 
-        log.warning(f"Skipping non-HTML [{content_type}]: {response.url}")
-        raise IgnoreRequest(f"Non-HTML content-type: {content_type}")
+        ct = response.headers.get(b"Content-Type", b"").decode("utf-8", "ignore").lower()
+
+        if not ct or "text/html" in ct or "xhtml" in ct:
+            log.debug("[ALLOW-resp] HTML [%s] → %s", ct or "no-ct", _short(url))
+            return response
+
+        log.warning("[BLOCK-resp] non-HTML [%s] → %s", ct, url)
+        raise IgnoreRequest(f"Non-HTML content-type: {ct}")
 
 
 class PlaywrightRoutingMiddleware:
-    """
-    PHASE 3 HOOK — currently a no-op pass-through.
-    """
+    """Phase 3 stub — routes JS-heavy requests to Playwright browser."""
 
-    def process_request(self, request, spider):
+    def __init__(self, crawler=None):
+        self.crawler = crawler
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler)
+
+    async def process_request(self, request):
+        """Scrapy 2.16+ async signature."""
         if request.meta.get("playwright"):
-            log.debug(f"[Phase 3 stub] Would launch browser for: {request.url}")
+            log.debug("[Phase 3 stub] Would launch browser for: %s", request.url)
         return None
 
 
 class NexoraSpiderMiddleware:
-
-    """
-    Spider-level middleware.
-
-    CRITICAL FIX: process_spider_output must be SYNCHRONOUS (not async) in Scrapy 2.x.
-    Using async here silently breaks start_requests() generator chain.
-    """
+    """Spider middleware — handles spider output and exceptions."""
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -118,16 +145,32 @@ class NexoraSpiderMiddleware:
         crawler.signals.connect(s.spider_opened, signal=signals.spider_opened)
         return s
 
-    def process_spider_input(self, response, spider):
+    def process_spider_input(self, response):
+        """Scrapy 2.16+ — no spider argument."""
         return None
 
-    async def process_spider_output_async(self, response, result, spider):
-        for x in result:
+    async def process_spider_output(self, response, result):
+        """Scrapy 2.16+ async output processing.
+
+        Must be named process_spider_output (not process_spider_output_async).
+        Scrapy detects the async def and calls it asynchronously.
+        """
+        async for x in result:
             yield x
 
-
-    def process_spider_exception(self, response, exception, spider):
+    async def process_spider_exception(self, response, exception):
+        """Scrapy 2.16+ async signature — no spider argument."""
+        log.error("[spider-exception] %s — %s", response.url, exception)
         return None
 
     def spider_opened(self, spider):
-        log.info(f"Spider opened: {spider.name}")
+        log.info("Spider opened: %s", spider.name)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _short(url: str, n: int = 80) -> str:
+    """Truncate a URL for readable log lines."""
+    return url if len(url) <= n else url[:n] + "…"

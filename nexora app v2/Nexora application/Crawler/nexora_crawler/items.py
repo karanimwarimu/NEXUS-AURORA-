@@ -18,6 +18,7 @@ import scrapy
 class NexoraPageItem(scrapy.Item):
     # ── Scrapy-level fields (set by the spider) ───────────────────────────
     url          = scrapy.Field()   # final resolved URL after redirects
+    status       = scrapy.Field()   # HTTP status code (200, 404, etc.)
     html         = scrapy.Field()   # raw HTML string
     depth        = scrapy.Field()   # crawl depth from seed URL
     spider_name  = scrapy.Field()   # which spider produced this item
@@ -67,4 +68,3 @@ class NexoraPageItem(scrapy.Item):
 
     saved_json = scrapy.Field()   # absolute path to the saved JSON file
     saved_csv  = scrapy.Field()  # absolute path to the saved CSV file
-

@@ -11,6 +11,11 @@ Phase 3 additions are clearly marked — uncomment when ready.
 BOT_NAME         = "nexora_crawler"
 SPIDER_MODULES   = ["nexora_crawler.spiders"]
 NEWSPIDER_MODULE = "nexora_crawler.spiders"
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
 
 # ── Depth control — DEFAULT: single page only ────────────────────────────────
 # 0 = fetch the seed URL only (default — safe, predictable)
@@ -58,6 +63,8 @@ DUPEFILTER_CLASS = "scrapy.dupefilters.RFPDupeFilter"
 TELNETCONSOLE_ENABLED = False
 
 # ── Middlewares ───────────────────────────────────────────────────────────────
+# Scrapy 2.16+ uses async middleware signatures by default.
+# The spider middleware order is important — lower numbers run first.
 SPIDER_MIDDLEWARES = {
     "nexora_crawler.middlewares.NexoraSpiderMiddleware": 543,
 }
@@ -66,7 +73,7 @@ DOWNLOADER_MIDDLEWARES = {
     # Disable Scrapy's default User-Agent middleware
     "scrapy.downloadermiddlewares.useragent.UserAgentMiddleware": None,
     # Rotating User-Agent
-    "nexora_crawler.middlewares.NexoraUserAgentMiddleware": 500,
+    "nexora_crawler.middlewares.NexoraUserAgentMiddleware": 50,
     # Content-type guard — rejects PDFs, images, XML before they hit the pipeline
     "nexora_crawler.middlewares.ContentTypeFilterMiddleware": 510,
     # Phase 3: uncomment when scrapy-playwright is installed
@@ -74,9 +81,11 @@ DOWNLOADER_MIDDLEWARES = {
 }
 
 # ── Item Pipelines ────────────────────────────────────────────────────────────
+# Order matters: lower numbers run first.
+# 100  Extraction  → 150  Styles  → 200  Export  → 300  Dataset
 ITEM_PIPELINES = {
     "nexora_crawler.pipelines.NexoraExtractionPipeline": 100,
-    "nexora_crawler.pipelines.NexoraStylePipeline":      150,  # NEW — style/theme
+    "nexora_crawler.pipelines.NexoraStylePipeline":      150,  # style/theme
     "nexora_crawler.pipelines.NexoraExportPipeline":     200,
     "nexora_crawler.pipelines.NexoraDatasetPipeline":    300,
 }

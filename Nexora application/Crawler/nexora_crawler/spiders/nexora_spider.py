@@ -1,26 +1,24 @@
 """
 nexora_crawler/spiders/nexora_spider.py
 ========================================
-Nexora's main Scrapy spider — Phase 2.
+Nexora main spider — Phase 2.5
 
-DEFAULT BEHAVIOUR: fetches the seed URL only (depth=0).
-Crawling is opt-in — pass -a depth=1 or -a crawl=true to follow links.
+Depth Strategy Mapping (user-facing):
+  1. "Just this page"          → depth=0, single-page
+  2. "This page + linked"      → depth=1, multi-page
+  3. "The whole website"       → auto-detect sitemap, fallback depth=3
+  4. "Everything connected"    → depth=5, domain-locked
 
-This prevents the runaway crawl issue where a single site with hundreds
-of links (e.g. realpython.com) queues thousands of pages unexpectedly.
+Modes
+-----
+  sitemap    -a sitemap="https://example.com/sitemap.xml"
+  auto       -a urls="https://example.com" -a strategy="whole-website"
+  multi-page -a urls="https://example.com" -a depth=2
+  single-page (default)
 
-Usage:
-  # Single page (default — safe)
-  scrapy crawl nexora -a urls="https://realpython.com"
-
-  # Follow links one hop (opt-in)
-  scrapy crawl nexora -a urls="https://realpython.com" -a depth=1
-
-  # Full crawl up to settings.py DEPTH_LIMIT ceiling
-  scrapy crawl nexora -a urls="https://realpython.com" -a crawl=true
-
-The spider never parses HTML — it only fetches and packages.
-All extraction happens in the pipeline (Phase 1 functions).
+Debug
+-----
+  scrapy crawl nexora -a urls="..." -a strategy="whole-website" --loglevel=INFO
 """
 
 import logging
@@ -28,160 +26,285 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import scrapy
-from w3lib.url import canonicalize_url
+from parsel import Selector
+
 from nexora_crawler.items import NexoraPageItem
 
-log = logging.getLogger("nexora.spider")
 
-# ── Default seed (used when no -a urls= is passed) ────────────────────────────
-DEFAULT_SEED_URLS = [
-    "https://realpython.com",
-]
+logger = logging.getLogger("nexora.spider")
 
-# ── JS-heavy domain rules (Phase 3 hook — flag only in Phase 2) ───────────────
-JS_HEAVY_DOMAINS = {
-    "youtube.com", "twitter.com", "x.com", "instagram.com",
-    "facebook.com", "reddit.com", "airbnb.com", "linkedin.com",
+# ── User-facing strategy → internal mapping ──────────────────────────────
+STRATEGY_MAP = {
+    "single-page":      {"depth": 0, "mode": "single-page", "auto_sitemap": False, "domain_lock": False},
+    "linked-pages":     {"depth": 1, "mode": "multi-page",  "auto_sitemap": False, "domain_lock": False},
+    "whole-website":    {"depth": 3, "mode": "auto",        "auto_sitemap": True,  "domain_lock": False},
+    "everything":       {"depth": 5, "mode": "multi-page",  "auto_sitemap": False, "domain_lock": True},
 }
 
-# ── UTM / tracking params to strip from URLs before queuing ──────────────────
-# Fixes assessment issue 2.2 — prevents tracking variants being crawled separately
-STRIP_PARAMS = {
-    "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
-    "ref", "fbclid", "gclid", "mc_cid", "mc_eid",
+# Backwards-compat: numeric depth still works
+DEPTH_PRESETS = {
+    0: "single-page",
+    1: "linked-pages",
+    3: "whole-website",
+    5: "everything",
 }
 
 
 class NexoraSpider(scrapy.Spider):
     name = "nexora"
 
+    handle_httpstatus_list = [301, 302]
+
+    # ------------------------------------------------------------------ #
+    # Init                                                                 #
+    # ------------------------------------------------------------------ #
     def __init__(
         self,
         urls: str = "",
-        depth: int = None,
-        crawl: str = "false",
+        sitemap: str = "",
+        depth: int = 0,
+        strategy: str = "",     # NEW: user-friendly strategy name
+        max_pages: int = 1000,  # NEW: safety cap
         *args,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
 
-        # ── Seed URLs ─────────────────────────────────────────────────────
-        if urls:
-            self.start_urls = [u.strip() for u in urls.split(",") if u.strip()]
-        else:
-            self.start_urls = DEFAULT_SEED_URLS
+        self.seeds = [u.strip() for u in urls.split(",") if u.strip()]
+        self.raw_depth = int(depth)
+        self.raw_strategy = strategy.strip().lower()
+        self.max_pages = int(max_pages)
+        self.pages_crawled = 0
 
-        # ── Crawl mode ────────────────────────────────────────────────────
-        # crawl=false (default) → depth=0, no link following
-        # crawl=true            → use depth argument (default 1 if not set)
-        # depth=N               → explicit depth, implies crawl=true
-        crawl_enabled = crawl.lower() in ("true", "1", "yes")
+        # Resolve strategy
+        self._resolve_strategy(sitemap)
 
-        if depth is not None:
-            self._depth = int(depth)
-            crawl_enabled = True
-        elif crawl_enabled:
-            self._depth = 1   # sensible default when crawl=true but no depth given
-        else:
-            self._depth = 0   # single page — the safe default
+        logger.info("Mode      : %s", self.mode)
+        logger.info("Strategy  : %s", self.strategy_name)
+        logger.info("Seeds     : %s", self.seeds)
+        logger.info("Depth     : %s", self.max_depth)
+        logger.info("Max pages : %s", self.max_pages)
+        logger.info("Domain lock: %s", self.domain_lock)
+        if self.sitemap_url:
+            logger.info("Sitemap   : %s", self.sitemap_url)
 
-        # Enforce depth via custom_settings so it takes effect for THIS run.
-        # This fixes the assessment bug where -a depth=1 was ignored because
-        # settings.py DEPTH_LIMIT=2 was the actual ceiling Scrapy used.
-        self.custom_settings = {"DEPTH_LIMIT": self._depth}
+    def _resolve_strategy(self, explicit_sitemap: str):
+        """Resolve user input into internal mode/depth/settings."""
+        # Explicit sitemap always wins
+        if explicit_sitemap:
+            self.mode = "sitemap"
+            self.sitemap_url = explicit_sitemap.strip()
+            self.strategy_name = "explicit-sitemap"
+            self.max_depth = 0
+            self.domain_lock = False
+            return
 
-        self._crawl_enabled = crawl_enabled
+        # Strategy keyword takes precedence over raw depth
+        if self.raw_strategy and self.raw_strategy in STRATEGY_MAP:
+            cfg = STRATEGY_MAP[self.raw_strategy]
+            self.mode = cfg["mode"]
+            self.max_depth = cfg["depth"]
+            self.auto_sitemap = cfg["auto_sitemap"]
+            self.domain_lock = cfg["domain_lock"]
+            self.strategy_name = self.raw_strategy
+            self.sitemap_url = ""
+            return
 
-        log.info(f"Mode     : {'crawl' if crawl_enabled else 'single-page'}")
-        log.info(f"Seeds    : {self.start_urls}")
-        log.info(f"Depth    : {self._depth}")
+        # Backwards-compat: depth-only mode
+        if self.raw_depth > 0:
+            self.mode = "multi-page"
+            self.max_depth = self.raw_depth
+            self.strategy_name = DEPTH_PRESETS.get(self.raw_depth, f"depth-{self.raw_depth}")
+            self.auto_sitemap = False
+            self.domain_lock = False
+            self.sitemap_url = ""
+            return
 
-    # ── Entry point ───────────────────────────────────────────────────────────
-    def start_requests(self):
-        for url in self.start_urls:
-            url = self._canonicalize(url)
-            needs_js = self._needs_playwright(url)
-            if needs_js:
-                log.info(f"[JS-heavy] flagged for Phase 3 Playwright: {url}")
+        # Default: single-page
+        self.mode = "single-page"
+        self.max_depth = 0
+        self.strategy_name = "single-page"
+        self.auto_sitemap = False
+        self.domain_lock = False
+        self.sitemap_url = ""
 
+    # ------------------------------------------------------------------ #
+    # start() — Scrapy 2.16+ entry point                                  #
+    # ------------------------------------------------------------------ #
+    async def start(self):
+        """
+        Scrapy 2.13+ calls start() exclusively.
+        MUST be async — Scrapy 2.16 wraps this in 'async for'.
+        """
+        count = 0
+
+        # ── Auto-detect sitemap for "whole-website" strategy ────────────
+        if self.mode == "auto" and self.auto_sitemap and self.seeds:
+            seed = self.seeds[0]
+            discovered = await self._try_discover_sitemap(seed)
+            if discovered:
+                self.mode = "sitemap"
+                self.sitemap_url = discovered[0]
+                logger.info("🗺️  Auto-detected sitemap — switching to sitemap mode")
+            else:
+                self.mode = "multi-page"
+                logger.info("🔗 No sitemap found — falling back to link-following (depth=%s)", self.max_depth)
+
+        # ── Sitemap mode ──────────────────────────────────────────────────
+        if self.mode == "sitemap":
+            logger.debug("[start] dispatching sitemap fetch → %s", self.sitemap_url)
             yield scrapy.Request(
-                url=url,
-                callback=self.parse,
-                errback=self.handle_error,
-                meta={
-                    "playwright":      needs_js,
-                    "playwright_used": needs_js,
-                    "seed_url":        url,
-                },
+                self.sitemap_url,
+                callback=self.parse_sitemap,
+                errback=self.on_error,
+                dont_filter=True,
+                meta={"from_sitemap": True, "depth": 0},
+            )
+            count = 1
+
+        # ── Single / Multi-page mode ────────────────────────────────────
+        elif self.mode in ("single-page", "multi-page"):
+            for url in self.seeds:
+                logger.debug("[start] dispatching seed → %s", url)
+                yield scrapy.Request(
+                    url,
+                    callback=self.parse_page,
+                    errback=self.on_error,
+                    meta={"depth": 0},
+                )
+                count += 1
+
+        else:
+            logger.error("[start] unknown mode %r — 0 requests generated", self.mode)
+
+        logger.debug("[start] yielded %d request(s)", count)
+
+    # ------------------------------------------------------------------ #
+    # Sitemap auto-discovery                                              #
+    # ------------------------------------------------------------------ #
+    async def _try_discover_sitemap(self, url: str) -> list[str]:
+        """Async sitemap discovery using SitemapDetector."""
+        try:
+            from nexora_crawler.sitemap_detector import SitemapDetector
+            detector = SitemapDetector()
+            await detector.__aenter__()
+            try:
+                return await detector.discover(url)
+            finally:
+                await detector.__aexit__(None, None, None)
+        except Exception as exc:
+            logger.warning("Sitemap discovery failed: %s", exc)
+            return []
+
+    # ------------------------------------------------------------------ #
+    # Sitemap parsing                                                      #
+    # ------------------------------------------------------------------ #
+    def parse_sitemap(self, response):
+        """
+        Handle both sitemap index (<sitemapindex>) and leaf (<urlset>).
+        Uses local-name() XPath so namespace prefixes don't matter.
+        """
+        try:
+            sel = Selector(text=response.text, type="xml")
+        except Exception as exc:
+            logger.error("[sitemap] XML parse failed at %s: %s", response.url, exc)
+            return
+
+        # Sitemap index — recurse into sub-sitemaps
+        sub_sitemaps = sel.xpath(
+            "//*[local-name()='sitemap']/*[local-name()='loc']/text()"
+        ).getall()
+        if sub_sitemaps:
+            logger.info("[sitemap-index] %d sub-sitemaps found at %s",
+                        len(sub_sitemaps), response.url)
+            for url in sub_sitemaps:
+                logger.debug("[sitemap-index] → %s", url.strip())
+                yield scrapy.Request(
+                    url.strip(),
+                    callback=self.parse_sitemap,
+                    errback=self.on_error,
+                    dont_filter=True,
+                    meta={"from_sitemap": True, "depth": 0},
+                )
+            return
+
+        # Leaf urlset — extract page URLs
+        page_urls = sel.xpath(
+            "//*[local-name()='url']/*[local-name()='loc']/text()"
+        ).getall()
+        logger.info("[sitemap-leaf] %d URLs to crawl from %s",
+                    len(page_urls), response.url)
+
+        # Safety cap for sitemap mode
+        if len(page_urls) > self.max_pages:
+            logger.warning(
+                "[sitemap] %d URLs found, capping to max_pages=%d",
+                len(page_urls), self.max_pages,
+            )
+            page_urls = page_urls[:self.max_pages]
+
+        for url in page_urls:
+            logger.debug("[sitemap-leaf] → %s", url.strip())
+            yield scrapy.Request(
+                url.strip(),
+                callback=self.parse_page,
+                errback=self.on_error,
+                meta={"depth": 0},
             )
 
-    # ── Parse callback ────────────────────────────────────────────────────────
-    def parse(self, response):
-        url   = response.url
-        depth = response.meta.get("depth", 0)
+        if not sub_sitemaps and not page_urls:
+            logger.warning("[sitemap] no URLs found in %s — body preview: %s",
+                           response.url, response.text[:200])
 
-        log.info(f"[depth={depth}] Parsed: {url}")
+    # ------------------------------------------------------------------ #
+    # Page parsing                                                         #
+    # ------------------------------------------------------------------ #
+    def parse_page(self, response):
+        current_depth = response.meta.get("depth", 0)
+        domain = urlparse(response.url).netloc
+        seed_domain = urlparse(self.seeds[0]).netloc if self.seeds else domain
 
-        # ── Yield item — pipeline does all the extraction ─────────────────
-        item = NexoraPageItem()
-        item["url"]             = url
-        item["html"]            = response.text
-        item["depth"]           = depth
-        item["spider_name"]     = self.name
-        item["crawled_at"]      = datetime.now(timezone.utc).isoformat()
-        item["playwright_used"] = response.meta.get("playwright_used", False)
+        logger.debug("[page] depth=%d status=%d → %s",
+                     current_depth, response.status, response.url)
 
-        yield item
+        # Safety cap
+        self.pages_crawled += 1
+        if self.pages_crawled > self.max_pages:
+            logger.warning("[page] Max pages cap (%d) reached — stopping.", self.max_pages)
+            return
 
-        # ── Link following — only when crawl mode is active ───────────────
-        if not self._crawl_enabled:
-            return  # single-page mode — stop here
+        yield NexoraPageItem(
+            url=response.url,
+            status=response.status,
+            html=response.text,
+            depth=current_depth,
+            spider_name=self.name,
+            crawled_at=datetime.now(timezone.utc).isoformat(),
+            playwright_used=False,
+        )
 
-        base_domain = urlparse(url).netloc
+        # Follow internal links in multi-page mode
+        if self.mode == "multi-page" and current_depth < self.max_depth:
+            followed = 0
+            for href in response.css("a::attr(href)").getall():
+                abs_url = response.urljoin(href)
+                link_domain = urlparse(abs_url).netloc
 
-        for href in response.css("a::attr(href)").getall():
-            if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
-                continue
+                # Domain lock for "everything connected" strategy
+                if self.domain_lock and link_domain != seed_domain:
+                    continue
 
-            abs_url = self._canonicalize(response.urljoin(href))
+                yield scrapy.Request(
+                    abs_url,
+                    callback=self.parse_page,
+                    errback=self.on_error,
+                    meta={"depth": current_depth + 1},
+                )
+                followed += 1
+            logger.debug("[page] followed %d internal links", followed)
 
-            # Stay on same domain (fixes assessment issue 2.4 — offsite leaking)
-            if urlparse(abs_url).netloc != base_domain:
-                continue
-
-            needs_js = self._needs_playwright(abs_url)
-            yield response.follow(
-                abs_url,
-                callback=self.parse,
-                errback=self.handle_error,
-                meta={
-                    "playwright":      needs_js,
-                    "playwright_used": needs_js,
-                },
-            )
-
-    # ── Error handler ─────────────────────────────────────────────────────────
-    def handle_error(self, failure):
-        log.error(f"Request failed [{failure.type.__name__}]: {failure.request.url}")
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
-    @staticmethod
-    def _canonicalize(url: str) -> str:
-        """
-        Strip tracking parameters and normalise URL before queuing.
-        Fixes assessment issue 2.2 — prevents UTM variants being treated
-        as separate pages.
-        """
-        from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
-        parsed = urlparse(url)
-        params = {
-            k: v for k, v in parse_qs(parsed.query).items()
-            if k.lower() not in STRIP_PARAMS
-        }
-        clean = parsed._replace(query=urlencode(params, doseq=True), fragment="")
-        return urlunparse(clean)
-
-    @staticmethod
-    def _needs_playwright(url: str) -> bool:
-        host = urlparse(url).netloc.lower().removeprefix("www.")
-        return host in JS_HEAVY_DOMAINS
+    # ------------------------------------------------------------------ #
+    # Error handler                                                        #
+    # ------------------------------------------------------------------ #
+    def on_error(self, failure):
+        logger.error("[error] %s — %s", failure.request.url, failure.type.__name__)
