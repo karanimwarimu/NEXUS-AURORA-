@@ -1,6 +1,0 @@
-url,title,author,date,language,word_count_raw,word_count_clean,images_count,links_count,framework,theme,layout_type,has_animations,fonts,playwright_used,crawled_at,depth,sitemap_lastmod,sitemap_priority,sitemap_changefreq,from_sitemap
-https://www.bbc.com/cymru,BBC - Cymru - Home,,,,355,53,18,39,tailwind,dark,flex,True,"Arial, Helvetica, ReithRounded, ReithSans, ReithSemiRounded, ReithSerif, freesans",False,2026-06-24T13:02:12.150304+00:00,1,,,,False
-https://www.bbc.com/wales,BBC - Wales - Home,,,,760,48,41,45,tailwind,dark,flex,True,"Arial, Helvetica, ReithRounded, ReithSans, ReithSemiRounded, ReithSerif, freesans",False,2026-06-24T13:02:12.476313+00:00,1,,,,False
-https://www.bbc.com/alba,BBC - Alba - Home,,,,497,114,43,63,tailwind,dark,flex,True,"Arial, Helvetica, ReithRounded, ReithSans, ReithSemiRounded, ReithSerif, freesans",False,2026-06-24T13:02:13.016307+00:00,1,,,,False
-https://www.bbc.com/northernireland,BBC - Northern Ireland - Home,,,,608,67,27,48,tailwind,dark,flex,True,"Arial, Helvetica, ReithRounded, ReithSans, ReithSemiRounded, ReithSerif, freesans",False,2026-06-24T13:02:13.606310+00:00,1,,,,False
-https://www.bbc.com/scotland,BBC - Scotland - Home,,,,864,63,46,59,tailwind,dark,flex,True,"Arial, Helvetica, ReithRounded, ReithSans, ReithSemiRounded, ReithSerif, freesans",False,2026-06-24T13:02:14.123511+00:00,1,,,,False

@@ -1,0 +1,22 @@
+Content-Length: 3021444
+Date: Wed, 24 Jun 2026 16:31:48 GMT
+Content-Type: application/xml
+X-Amz-Id-2: PQDkew1VaV0lxP6LfB1wExFOMqIzj2js72Ghq4qFJbHnUmacVPaq22IrC86EuUQ39KQgGgPpP0w0uLKbRWSDoNyWntVbJpxr
+X-Amz-Request-Id: 1NKMHP72JJ239SV4
+Last-Modified: Wed, 24 Jun 2026 16:30:46 GMT
+Etag: "29f94fd333b22aa73ff316e50e10fc9f"
+X-Amz-Server-Side-Encryption: AES256
+Cache-Control: max-age=60
+X-Amz-Meta-Data-Creation-Date: Wed, 24 Jun 2026 16:30:45 GMT
+X-Amz-Meta-Data-Hash: 29f94fd333b22aa73ff316e50e10fc9f
+Origin-Agent-Cluster: ?0
+Nel: {"report_to":"default","max_age":2592000,"include_subdomains":true,"failure_fraction":0.25}
+Req-Svc-Chain: GTM
+Via: 1.1 BBC-GTM
+X-Bbc-Edge-Cache-Status: MISS
+X-Bbc-Origin-Response-Status: 200
+Report-To: {"group":"default","max_age":2592000,"endpoints":[{"url":"https://default.bbc-reporting-api.app/report-endpoint","priority":1}],"include_subdomains":true}
+Accept-Ranges: bytes
+Server: BBC-GTM
+Strict-Transport-Security: max-age=31536000; preload
+X-Robots-Tag: bingbot: noarchive

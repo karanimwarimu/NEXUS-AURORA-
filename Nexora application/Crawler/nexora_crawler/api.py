@@ -4,11 +4,15 @@ nexora_crawler/api.py
 FastAPI wrapper + interactive CLI runner for Nexora crawler.
 
 Usage:
-  # FastAPI server mode
+  # FastAPI server mode (runs indefinitely, press Ctrl+C to stop)
+  python -m nexora_crawler.api --server
   uvicorn nexora_crawler.api:app --reload --port 8000
 
-  # Interactive CLI mode (run directly)
+  # Interactive CLI mode (prompts for input, runs once, exits)
   python -m nexora_crawler.api
+
+  # Direct command (no prompts, for scripting)
+  python -m nexora_crawler.api --url "https://example.com" --strategy whole-website
 
   # Or via Scrapy command (existing)
   scrapy crawl nexora -a urls="https://example.com" -a strategy="whole-website"
@@ -16,6 +20,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import sys
@@ -254,7 +259,7 @@ def _print_banner():
     ║   ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝██║  ██║██║  ██║       ║
     ║   ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝       ║
     ║                                                               ║
-    ║              Automated Web Crawler — Phase 2.5                ║
+    ║              Automated Web Crawler — Phase 2.6                ║
     ║                                                               ║
     ╚═══════════════════════════════════════════════════════════════╝
     """)
@@ -299,8 +304,8 @@ def _prompt_max_pages() -> int:
         return default
 
 
-def run_cli():
-    """Interactive CLI entrypoint."""
+def run_cli_interactive():
+    """Interactive CLI entrypoint with prompts."""
     _print_banner()
 
     url = _prompt_url()
@@ -313,7 +318,24 @@ def run_cli():
     print(f"   Max pages: {max_pages}")
     print(f"\n🚀 Starting crawl...\n")
 
-    # Run Scrapy via CrawlerProcess
+    _run_crawl_sync(url, strategy, max_pages)
+
+    print("\n✅ Crawl finished. Check output/ directory for results.")
+
+
+def run_cli_direct(url: str, strategy: str, max_pages: int):
+    """Direct CLI entrypoint (no prompts, for scripting)."""
+    print(f"🚀 Starting crawl: {url}")
+    print(f"   Strategy : {STRATEGY_DESCRIPTIONS[strategy]['name']}")
+    print(f"   Max pages: {max_pages}\n")
+
+    _run_crawl_sync(url, strategy, max_pages)
+
+    print("\n✅ Crawl finished. Check output/ directory for results.")
+
+
+def _run_crawl_sync(url: str, strategy: str, max_pages: int):
+    """Synchronous crawl execution for CLI modes."""
     settings = get_project_settings()
     settings.set("LOG_LEVEL", "INFO")
 
@@ -326,14 +348,86 @@ def run_cli():
     )
     process.start()
 
-    print("\n✅ Crawl finished. Check output/ directory for results.")
-
 
 # ── Entrypoint ─────────────────────────────────────────────────────────────
 
+def main():
+    """Main entrypoint — parses arguments and dispatches to correct mode."""
+    parser = argparse.ArgumentParser(
+        description="Nexora Crawler — CLI and API runner",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Interactive CLI (prompts for input)
+  python -m nexora_crawler.api
+
+  # Direct CLI (no prompts)
+  python -m nexora_crawler.api --url https://example.com --strategy whole-website
+
+  # FastAPI server mode
+  python -m nexora_crawler.api --server
+  python -m nexora_crawler.api --server --host 0.0.0.0 --port 8080
+        """,
+    )
+
+    parser.add_argument(
+        "--server", action="store_true",
+        help="Run as FastAPI server (default: interactive CLI)"
+    )
+    parser.add_argument(
+        "--host", default="0.0.0.0",
+        help="Server host (default: 0.0.0.0)"
+    )
+    parser.add_argument(
+        "--port", type=int, default=8000,
+        help="Server port (default: 8000)"
+    )
+    parser.add_argument(
+        "--url",
+        help="Target URL (direct CLI mode, skips prompts)"
+    )
+    parser.add_argument(
+        "--strategy", default="single-page",
+        choices=list(STRATEGY_MAP.keys()),
+        help="Crawl strategy (default: single-page)"
+    )
+    parser.add_argument(
+        "--max-pages", type=int, default=1000,
+        help="Max pages cap (default: 1000)"
+    )
+
+    args = parser.parse_args()
+
+    # ── Mode 1: FastAPI Server ────────────────────────────────────────────
+    if args.server:
+        print(f"""
+    ╔═══════════════════════════════════════════════════════════════╗
+    ║                                                               ║
+    ║              Nexora Crawler API Server                        ║
+    ║                                                               ║
+    ║   📡 Server: http://{args.host}:{args.port}                    ║
+    ║   📖 Docs:   http://{args.host}:{args.port}/docs               ║
+    ║                                                               ║
+    ║   Press Ctrl+C to stop                                        ║
+    ╚═══════════════════════════════════════════════════════════════╝
+        """)
+        uvicorn.run(
+            "nexora_crawler.api:app",
+            host=args.host,
+            port=args.port,
+            reload=False,  # Disable reload for stability
+            log_level="info",
+        )
+        return
+
+    # ── Mode 2: Direct CLI (no prompts) ──────────────────────────────────
+    if args.url:
+        run_cli_direct(args.url, args.strategy, args.max_pages)
+        return
+
+    # ── Mode 3: Interactive CLI (default) ────────────────────────────────
+    run_cli_interactive()
+
+
 if __name__ == "__main__":
-    # If --server flag passed, run FastAPI; otherwise run interactive CLI
-    if len(sys.argv) > 1 and sys.argv[1] == "--server":
-        uvicorn.run("nexora_crawler.api:app", host="0.0.0.0", port=8000, reload=True)
-    else:
-        run_cli()
+    main()
