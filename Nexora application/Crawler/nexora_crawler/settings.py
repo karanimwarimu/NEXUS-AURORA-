@@ -7,6 +7,13 @@ Every value here is documented with WHY it exists.
 Phase 3 additions are clearly marked — uncomment when ready.
 """
 
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load from project root regardless of where the script runs
+env_path = Path(__file__).resolve().parents[3] / ".env"  # adjust depth as needed
+load_dotenv(env_path)
+
 # ── Identity ──────────────────────────────────────────────────────────────────
 BOT_NAME         = "nexora_crawler"
 SPIDER_MODULES   = ["nexora_crawler.spiders"]
@@ -76,8 +83,20 @@ DOWNLOADER_MIDDLEWARES = {
     "nexora_crawler.middlewares.NexoraUserAgentMiddleware": 50,
     # Content-type guard — rejects PDFs, images, XML before they hit the pipeline
     "nexora_crawler.middlewares.ContentTypeFilterMiddleware": 510,
-    # Phase 3: uncomment when scrapy-playwright is installed
-    # "nexora_crawler.middlewares.PlaywrightRoutingMiddleware": 600,
+    # Playwright integration — enables JS rendering
+    "scrapy_playwright.middleware.ScrapyPlaywrightDownloadHandler": 543,
+    # Playwright cleanup — closes pages to prevent memory leaks
+    "nexora_crawler.middlewares.PlaywrightCleanupMiddleware": 550,
+    # Playwright routing — handles redirects and navigation
+    "nexora_crawler.middlewares.PlaywrightRoutingMiddleware": 600,
+    # Dynamic detection — identifies JS-heavy pages for Playwright
+    "nexora_crawler.middlewares.dynamic_detection.DynamicDetectionMiddleware": 543,
+    # Exponential backoff for retries — slows down on repeated failures
+    "nexora_crawler.middlewares.ExponentialBackoffMiddleware": 700,
+    # Proxy rotation — routes requests through different IPs
+    "nexora_crawler.middlewares.ProxyRotationMiddleware": 800,
+    # Playwright cleanup — closes pages to prevent memory leaks
+    "nexora_crawler.middlewares.playwright_cleanup.PlaywrightCleanupMiddleware": 900,
 }
 
 # ── Item Pipelines ────────────────────────────────────────────────────────────
@@ -107,11 +126,32 @@ DEFAULT_REQUEST_HEADERS = {
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_LEVEL = "INFO"
 
-# ── Phase 3 Playwright settings (uncomment when ready) ───────────────────────
-# DOWNLOAD_HANDLERS = {
-#     "http":  "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
-#     "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
-# }
-# TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
-# PLAYWRIGHT_BROWSER_TYPE = "chromium"
-# PLAYWRIGHT_LAUNCH_OPTIONS = {"headless": True}
+# PHASE 3: PLAYWRIGHT INTEGRATION SETTINGS
+
+# Async reactor required for Playwright
+TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
+
+# Download handlers
+DOWNLOAD_HANDLERS = {
+    "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+    "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+}
+
+PLAYWRIGHT_BROWSER_TYPE = "chromium"
+PLAYWRIGHT_LAUNCH_OPTIONS = {
+    "headless": True,
+    "args": [
+        "--disable-blink-features=AutomationControlled",
+        "--disable-dev-shm-usage",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-background-networking",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-features=IsolateOrigins,site-per-process",
+        "--disable-site-isolation-trials",
+    ],
+}
+
+PLAYWRIGHT_MAX_PAGES_PER_CONTEXT = 5
+PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 30000

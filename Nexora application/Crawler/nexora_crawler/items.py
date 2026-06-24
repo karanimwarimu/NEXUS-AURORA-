@@ -25,7 +25,15 @@ class NexoraPageItem(scrapy.Item):
     crawled_at   = scrapy.Field()   # ISO timestamp of the fetch
 
     # ── Phase 3 hook ──────────────────────────────────────────────────────
-    playwright_used = scrapy.Field()  # bool — False in Phase 2, True in Phase 3
+    playwright_used = scrapy.Field() 
+    # Phase 3: Playwright tracking
+    playwright_used = scrapy.Field()      # bool
+    screenshot_path = scrapy.Field()      # str
+    render_time_ms = scrapy.Field()       # float
+    
+    # Phase 3: Anti-bot metrics
+    detection_score = scrapy.Field()      # float 0.0-1.0
+    retry_count = scrapy.Field()          # int
 
     # ── Style fields (populated by NexoraStylePipeline) ────────────────────
     styles = scrapy.Field()  # dict — framework/theme/layout/colors/fonts/etc.
