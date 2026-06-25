@@ -273,6 +273,10 @@ class NexoraSpider(scrapy.Spider):
             logger.warning("[page] Max pages cap (%d) reached — stopping.", self.max_pages)
             return
 
+        # Detect if Playwright was used by checking request meta
+        # DynamicDetectionMiddleware sets playwright=True if rendering was needed
+        pw_used = bool(response.meta.get("playwright", False))
+
         yield NexoraPageItem(
             url=response.url,
             status=response.status,
@@ -280,7 +284,7 @@ class NexoraSpider(scrapy.Spider):
             depth=current_depth,
             spider_name=self.name,
             crawled_at=datetime.now(timezone.utc).isoformat(),
-            playwright_used=False,
+            playwright_used=pw_used,
         )
 
         # Follow internal links in multi-page mode

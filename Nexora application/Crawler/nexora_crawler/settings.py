@@ -83,20 +83,17 @@ DOWNLOADER_MIDDLEWARES = {
     "nexora_crawler.middlewares.NexoraUserAgentMiddleware": 50,
     # Content-type guard — rejects PDFs, images, XML before they hit the pipeline
     "nexora_crawler.middlewares.ContentTypeFilterMiddleware": 510,
-    # Playwright integration — enables JS rendering
+    # Dynamic detection — identifies JS-heavy pages BEFORE Playwright handler (priority < 543)
+    "nexora_crawler.middlewares.dynamic_detection.DynamicDetectionMiddleware": 542,
+    # Playwright integration — enables JS rendering (handler at 543)
     "scrapy_playwright.middleware.ScrapyPlaywrightDownloadHandler": 543,
+    # Playwright routing — removed: replaced by DynamicDetectionMiddleware above
     # Playwright cleanup — closes pages to prevent memory leaks
-    "nexora_crawler.middlewares.PlaywrightCleanupMiddleware": 550,
-    # Playwright routing — handles redirects and navigation
-    "nexora_crawler.middlewares.PlaywrightRoutingMiddleware": 600,
-    # Dynamic detection — identifies JS-heavy pages for Playwright
-    "nexora_crawler.middlewares.dynamic_detection.DynamicDetectionMiddleware": 543,
-    # Exponential backoff for retries — slows down on repeated failures
-    "nexora_crawler.middlewares.ExponentialBackoffMiddleware": 700,
-    # Proxy rotation — routes requests through different IPs
-    "nexora_crawler.middlewares.ProxyRotationMiddleware": 800,
-    # Playwright cleanup — closes pages to prevent memory leaks
-    "nexora_crawler.middlewares.playwright_cleanup.PlaywrightCleanupMiddleware": 900,
+    "nexora_crawler.middlewares.playwright_cleanup.PlaywrightCleanupMiddleware": 550,
+    # Exponential backoff — TODO Phase 4
+    # "nexora_crawler.middlewares.ExponentialBackoffMiddleware": 700,
+    # Proxy rotation — TODO Phase 5
+    # "nexora_crawler.middlewares.ProxyRotationMiddleware": 800,
 }
 
 # ── Item Pipelines ────────────────────────────────────────────────────────────

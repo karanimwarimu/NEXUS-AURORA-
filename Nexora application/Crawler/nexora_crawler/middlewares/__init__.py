@@ -1,17 +1,16 @@
 """
 nexora_crawler/middlewares.py
 ==============================
-Downloader and spider middlewares.
+Downloader and spider middlewares (Phase 3).
 
+Active middlewares:
+     50  NexoraUserAgentMiddleware       — rotates User-Agent strings
+    510  ContentTypeFilterMiddleware     — rejects non-HTML before pipeline
+    542  DynamicDetectionMiddleware      — decides HTTP vs Playwright routing
+    550  PlaywrightCleanupMiddleware     — closes Playwright pages to prevent leaks
 
-Active in Phase 2:
-    500  NexoraUserAgentMiddleware      — rotates User-Agent strings
-    510  ContentTypeFilterMiddleware    — rejects non-HTML before pipeline
-
-
-Stubbed for Phase 3:
-    600  PlaywrightRoutingMiddleware    — routes JS-heavy requests to browser
-
+Spider middlewares:
+    543  NexoraSpiderMiddleware          — spider lifecycle + output passthrough
 
 Debug mode:
     Run with --loglevel=DEBUG to see every middleware decision with reason.
@@ -77,12 +76,16 @@ class NexoraUserAgentMiddleware:
         """Scrapy 2.16+ async signature — no spider argument."""
         ua = random.choice(USER_AGENTS)
         request.headers["User-Agent"] = ua
-        log.debug("[UA] %s → %s", _short(request.url), ua[:40])
+        log.debug("[UA] %s -> %s", _short(request.url), ua[:40])
         return None
 
 
 class ContentTypeFilterMiddleware:
-    """Rejects non-HTML responses and blocked URL patterns."""
+    """Rejects non-HTML responses and blocked URL patterns.
+
+    NOTE: Requests already marked for Playwright (playwright=True) are
+    allowed through, since Playwright handles its own sub-resource loading.
+    """
 
     def __init__(self, crawler=None):
         self.crawler = crawler
@@ -92,10 +95,17 @@ class ContentTypeFilterMiddleware:
         return cls(crawler)
 
     async def process_request(self, request):
-        """Block requests to URLs matching blocked patterns."""
+        """Block requests to URLs matching blocked patterns.
+        Allows Playwright-routed requests through regardless of path.
+        """
+        # Allow Playwright-routed requests through — the browser handles sub-resources
+        if request.meta.get("playwright"):
+            log.debug("[ALLOW-PW] %s", _short(request.url))
+            return None
+
         path = urlparse(request.url).path
         if _BLOCKED_RE.search(path):
-            log.debug("[BLOCK-req] pattern match → %s", request.url)
+            log.debug("[BLOCK-req] pattern match -> %s", request.url)
             raise IgnoreRequest(f"Blocked URL pattern: {request.url}")
         log.debug("[ALLOW-req] %s", _short(request.url))
         return None
@@ -106,34 +116,17 @@ class ContentTypeFilterMiddleware:
 
         # sitemap XML must reach parse_sitemap_index (text/xml / application/xml)
         if request.meta.get("from_sitemap"):
-            log.debug("[ALLOW-resp] sitemap pass-through → %s", _short(url))
+            log.debug("[ALLOW-resp] sitemap pass-through -> %s", _short(url))
             return response
 
         ct = response.headers.get(b"Content-Type", b"").decode("utf-8", "ignore").lower()
 
         if not ct or "text/html" in ct or "xhtml" in ct:
-            log.debug("[ALLOW-resp] HTML [%s] → %s", ct or "no-ct", _short(url))
+            log.debug("[ALLOW-resp] HTML [%s] -> %s", ct or "no-ct", _short(url))
             return response
 
-        log.warning("[BLOCK-resp] non-HTML [%s] → %s", ct, url)
+        log.warning("[BLOCK-resp] non-HTML [%s] -> %s", ct, url)
         raise IgnoreRequest(f"Non-HTML content-type: {ct}")
-
-
-class PlaywrightRoutingMiddleware:
-    """Phase 3 stub — routes JS-heavy requests to Playwright browser."""
-
-    def __init__(self, crawler=None):
-        self.crawler = crawler
-
-    @classmethod
-    def from_crawler(cls, crawler):
-        return cls(crawler)
-
-    async def process_request(self, request):
-        """Scrapy 2.16+ async signature."""
-        if request.meta.get("playwright"):
-            log.debug("[Phase 3 stub] Would launch browser for: %s", request.url)
-        return None
 
 
 class NexoraSpiderMiddleware:
@@ -173,4 +166,4 @@ class NexoraSpiderMiddleware:
 
 def _short(url: str, n: int = 80) -> str:
     """Truncate a URL for readable log lines."""
-    return url if len(url) <= n else url[:n] + "…"
+    return url if len(url) <= n else url[:n] + "..."
