@@ -29,10 +29,10 @@ logger = logging.getLogger(__name__)
 
 # JS Framework Detection Patterns
 JS_FRAMEWORK_PATTERNS = {
-    "next.js": re.compile(r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Next\.js', re.I),
+    "next.js": re.compile(r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Next\.js|__NEXT_DATA__|id=["\']__next["\']|__NEXT_F__|next-future|/_next/', re.I),
     "nuxt": re.compile(r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Nuxt', re.I),
     "gatsby": re.compile(r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Gatsby', re.I),
-    "react": re.compile(r'data-reactroot|data-reactid|__NEXT_DATA__|_reactListening', re.I),
+    "react": re.compile(r'data-reactroot|data-reactid|_reactListening', re.I),
     "vue": re.compile(r'data-v-[a-f0-9]+|__VUE__|vue-router', re.I),
     "angular": re.compile(r'ng-version=|ng-app=|_nghost-', re.I),
     "svelte": re.compile(r'svelte-[a-z0-9]+|__svelte', re.I),

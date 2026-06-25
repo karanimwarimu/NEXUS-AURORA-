@@ -62,7 +62,7 @@ class Audit:
         d = {"session": {"ts": datetime.now(timezone.utc).isoformat(), "ms": dur, "total": t, "passed": p, "failed": t-p},
              "vulns": [{**r["v"], "test": r["id"]} for r in vs], "tests": cls._r}
         json.dump(d, open("output/audit/phase3_unit_audit.json","w"), indent=2, default=str)
-        with open("output/audit/phase3_unit_audit.md","w") as f:
+        with open("output/audit/phase3_unit_audit.md","w", encoding="utf-8") as f:
             f.write(f"# Unit Audit | {p}/{t} passed ({dur}ms)\n\n")
             if vs: f.write("## Vulns\n|#|Sev|Test|Issue|Impact|Fix|\n|-|-|-|-|-|-|\n")
             for i,r in enumerate(vs,1): v=r["v"]; f.write(f"|{i}|{v['s']}|{r['id']}|{v['d']}|{v['i']}|{v['f']}|\n")
