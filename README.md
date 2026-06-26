@@ -1,31 +1,33 @@
-# NEXUS AURORA v2.6
+# NEXUS AURORA v3.4.0
 
-> AI-powered website intelligence platform that crawls, analyzes, and extracts structured knowledge, technologies, styles, and datasets from websites — built for machine learning, RAG, and competitive intelligence.
+> AI-powered website intelligence platform that intelligently routes between static HTTP and Playwright JS rendering — crawls, analyzes, and extracts structured knowledge from websites for machine learning, RAG, and competitive intelligence.
 
-[![Version](https://img.shields.io/badge/version-2.6-blue)]()
+[![Version](https://img.shields.io/badge/version-3.4-blue)]()
 [![Python](https://img.shields.io/badge/python-3.11+-green)]()
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
+[![Accuracy](https://img.shields.io/badge/benchmark-85%25%2B-brightgreen)]()
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [What's New in v2.6](#whats-new-in-v26)
+- [What's New in v3.4](#whats-new-in-v34)
 - [Features](#features)
 - [Architecture](#architecture)
+- [Dynamic Detection Engine](#dynamic-detection-engine)
 - [Project Structure](#project-structure)
 - [Installation](#installation)
 - [Usage](#usage)
   - [Phase 1 — Single Page Extraction](#phase-1--single-page-extraction)
   - [Phase 2 — Scrapy Crawler](#phase-2--scrapy-crawler)
-  - [Phase 2.6 — Interactive CLI](#phase-26--interactive-cli)
-  - [Phase 2.6 — FastAPI REST API](#phase-26--fastapi-rest-api)
-  - [Phase 5 — Streamlit Dashboard](#phase-5--streamlit-dashboard)
+  - [Phase 2.6 — Interactive CLI & API](#phase-26--interactive-cli--api)
+  - [Phase 3 — Dynamic Detection Middleware](#phase-3--dynamic-detection-middleware)
+  - [Benchmark Suite](#benchmark-suite)
 - [Crawl Strategies](#crawl-strategies)
 - [Output Format](#output-format)
-- [Data Schema](#data-schema)
 - [Configuration](#configuration)
+- [Testing](#testing)
 - [Development Roadmap](#development-roadmap)
 - [Known Limitations](#known-limitations)
 - [License](#license)
@@ -34,34 +36,30 @@
 
 ## Overview
 
-**NEXUS AURORA** (internal codename: **Nexora**) is a Python web intelligence pipeline. It fetches web pages, extracts clean article text and structural metadata, enriches pages with semantic data (Schema.org, Open Graph, Twitter Cards), detects visual design signals (CSS frameworks, themes, fonts, colors), deduplicates content via SimHash fingerprints, and exports everything as JSON/CSV datasets.
+**NEXUS AURORA** (codename: **Nexora**) is a Python web intelligence pipeline with an intelligent **static-first routing engine**. It probes each URL via lightweight HTTP, decides if JavaScript rendering is needed using 8 detection signals, and routes accordingly — saving 150-300MB RAM per page for static sites while ensuring JS-heavy SPAs get full browser rendering.
 
-There is **no React/Vue frontend yet** — v2.6 exposes the crawler through a **Scrapy CLI**, an **interactive terminal CLI**, a **FastAPI REST API**, and a **Streamlit dashboard**. Storage is **file-based** (no database).
+> **Current Phase: 3.4** — Dynamic Detection Middleware with 85-90% accuracy on 50 real websites across 8 categories.
 
 ---
 
-## What's New in v2.6
+## What's New in v3.4
 
 | Feature | Description |
 |---------|-------------|
-| **FastAPI REST API** | Start crawls via HTTP, poll job status, list strategies |
-| **Interactive CLI** | Terminal prompts for URL, strategy, and page cap |
-| **Streamlit dashboard** | Web UI for starting crawls and viewing results |
-| **Crawl strategies** | User-friendly presets: single-page, linked-pages, whole-website, everything |
-| **Sitemap auto-discovery** | Async `SitemapDetector` finds sitemaps via robots.txt and common paths |
-| **Style intelligence** | CSS framework, dark/light theme, fonts, colors, layout detection |
-| **Semantic enrichment** | JSON-LD, microdata, RDFa, Open Graph, Twitter Cards, canonical relations |
-| **Content deduplication** | SimHash fingerprints skip near-duplicate pages during a crawl |
-| **Language detection** | FastText-based ISO-639-1 classification (optional model) |
-| **Responsible crawling** | robots.txt compliance, throttling, AutoThrottle, content-type filtering |
-| **Phase 3 Playwright (opt-in)** | Headless browser rendering for JS-heavy pages via `NEXORA_PLAYWRIGHT=1` |
+| **DynamicDetectionMiddleware** | Scrapy middleware (Priority 542) that auto-routes between static HTTP and Playwright JS rendering |
+| **8-Signal Decision Engine** | Framework markers, script ratio, text density, body length, anti-bot, SPA mount points, bundle patterns, error fallback |
+| **SPA Mount Point Detection** | Detects `<div id="root">`, `<div id="__next">`, `<div id="app">` etc. for framework-agnostic SPA detection |
+| **Anti-Bot Detection on HTTP 200** | Catches Cloudflare/DataDome stealth challenges that return 200 status |
+| **JS Bundle Pattern Detection** | Vite/Webpack hashed asset patterns (`/assets/name.8chars.js`) |
+| **SQLite Profile Cache** | 24-hour TTL caching prevents redundant probes per domain |
+| **50-Site Benchmark Suite** | Automated validation across static, server, react, vue, angular, svelte, antibot, and spa categories |
+| **Release v3.4.0** | Full release notes in `output/release_notes_v3.4.0.md` |
 
 ---
 
 ## Features
 
 ### Content Extraction
-
 - **Structural metadata** — title, description, keywords, headings, images, internal links
 - **Reader-mode text** — clean article body via Trafilatura
 - **Semantic data** — JSON-LD, microdata, RDFa, Open Graph, Twitter Cards
@@ -69,83 +67,106 @@ There is **no React/Vue frontend yet** — v2.6 exposes the crawler through a **
 - **Graph relations** — canonical, prev/next pagination links
 
 ### Visual Design Intelligence
-
 - CSS framework detection (Tailwind, Bootstrap, Materialize, Bulma, etc.)
 - Dark/light theme inference
 - Font and color palette extraction
 - Layout type (flex, grid, float, table)
 - Animation signals (CSS keyframes, GSAP, Framer Motion class names)
 
-### Crawling
+### Phase 3 — Intelligent Routing
+- **Static-first design** — Zero Chromium processes for static sites
+- **8 detection signals** — Framework patterns, script ratio, text density, body length, anti-bot checks, SPA mount points, bundle hashes, error fallback
+- **7 framework detectors** — Next.js, Nuxt, Gatsby, React, Vue, Angular, Svelte
+- **Anti-bot detection** — Cloudflare, DataDome, PerimeterX, hCaptcha/reCAPTCHA (including stealth 200 challenges)
+- **SPA mount point detection** — Catches framework-agnostic SPA shells
+- **24-hour profile cache** — SQLite-backed, TTL-based re-probe
 
-- Four depth strategies with safety caps (`max_pages`)
-- Sitemap index recursion
-- Domain locking for deep crawls
-- User-Agent rotation
-- Blocks non-HTML content and sensitive paths (`/login`, `/admin/`, etc.)
-- HTTP cache for faster development re-runs
-- Optional Playwright rendering for JavaScript-heavy SPAs
-
-### Export
-
-- Per-page JSON (full data including raw HTML)
-- Per-page CSV (flattened row)
-- Master dataset CSV (one summary row per page)
+### Benchmarking
+- **50-site benchmark** across 8 categories with confusion matrix
+- **Per-category accuracy metrics**
+- **Quick validation script** for rapid testing
 
 ---
 
 ## Architecture
 
+### High-Level Pipeline
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        ENTRY POINTS                             │
-├──────────┬──────────┬──────────┬──────────┬───────────────────────┤
-│ Streamlit│ Interactive│ FastAPI │ scrapy  │ Extractor/main.py   │
-│ Dashboard│ CLI        │ REST    │ crawl   │ (Phase 1)           │
-└────┬─────┴─────┬──────┴────┬─────┴────┬────┴──────────┬──────────┘
-     │           │           │          │               │
-     └───────────┴───────────┴──────────┴───────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────┐
-│                   SCRAPY CRAWLER (Phase 2)                      │
-│  NexoraSpider → Middlewares → Pipeline Chain                    │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────┐
-│              EXTRACTION LAYER (Phase 1 modules)                   │
-│  BS4 │ Trafilatura │ Parser │ Style │ Cleaner                     │
-└──────────────────────────────┬────────────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────┐
-│                    FILE STORAGE                                   │
-│  output/pages/*.json │ *.csv │ master_dataset.csv                 │
-└───────────────────────────────────────────────────────────────────┘
+                        ┌─────────────────┐
+                        │  Incoming URL    │
+                        └────────┬────────┘
+                                 │
+                                 ▼
+              ┌──────────────────────────────────┐
+              │   DYNAMIC DETECTION MIDDLEWARE    │
+              │   (Priority 542 — Scrapy)         │
+              │                                    │
+              │   ┌──────────┐  ┌──────────┐     │
+              │   │ Cache    │─▶│ Probe    │     │
+              │   │ Check    │  │ (httpx)  │     │
+              │   └──────────┘  └────┬─────┘     │
+              │                      ▼            │
+              │              ┌──────────────┐    │
+              │              │ 8-Signal     │    │
+              │              │ Decision     │    │
+              │              └──────┬───────┘    │
+              └─────────────────────┼────────────┘
+                                    │
+                    ┌───────────────┴───────────────┐
+                    │                               │
+                    ▼                               ▼
+        ┌────────────────────┐         ┌────────────────────┐
+        │  STATIC HTTP ROUTE  │         │ PLAYWRIGHT ROUTE   │
+        │  httpx (0 MB RAM)   │         │ Chromium (150-300MB)│
+        └────────┬───────────┘         └────────┬───────────┘
+                 │                              │
+                 └──────────────┬──────────────┘
+                                │
+                                ▼
+              ┌──────────────────────────────────┐
+              │       EXTRACTOR PIPELINE          │
+              │  Sitemap → Parser → Cleaner → CSV │
+              └──────────────────────────────────┘
 ```
 
-### Pipeline Chain
+### 8-Signal Decision Tree
 
-| Order | Pipeline | Role |
-|-------|----------|------|
-| 100 | `NexoraExtractionPipeline` | BS4 + Trafilatura + semantic parsers + fingerprint + language |
-| 150 | `NexoraStylePipeline` | CSS framework, theme, fonts, colors, layout |
-| 200 | `NexoraExportPipeline` | Save per-page JSON + CSV to `output/pages/` |
-| 300 | `NexoraDatasetPipeline` | Append row to `output/master_dataset.csv` |
+```
+HTTP GET → [1]Anti-Bot 403/429/503 → [1b]Anti-Bot 200 → [2]Short Body (<200ch+JS)
+→ [3]Low Text Density → [4]Framework Patterns → [5]SPA Mount Points
+→ [6]Bundle Hashes → [7]High Script Ratio → [8]Error Fallback → Static Route
+```
 
-### Tech Stack
+---
 
-| Layer | Technology |
-|-------|------------|
-| Crawling | Scrapy 2.11 |
-| HTTP (Phase 1) | requests |
-| HTTP (API / sitemap) | httpx |
-| HTML parsing | BeautifulSoup4, lxml |
-| Article extraction | Trafilatura |
-| Dedup | simhash |
-| Language | fasttext-wheel (optional) |
-| API | FastAPI, uvicorn, pydantic |
-| Dashboard | Streamlit |
-| JS rendering (opt-in) | scrapy-playwright, Playwright |
-| Output | JSON, CSV |
+## Dynamic Detection Engine
+
+### Detected Frameworks (7 frameworks, 16+ patterns)
+
+| Framework | Detection Patterns | Example Sites |
+|-----------|-------------------|---------------|
+| **Next.js** | `__NEXT_DATA__`, `/_next/`, `/_next/static/chunks`, `.next/server` | react.dev, vercel.com, supabase.com |
+| **Nuxt** | `<meta generator="Nuxt">`, `data-v-xxxxxxxx`, `__VUE__` | vuejs.org, nuxt.com, gitlab.com |
+| **Gatsby** | `<meta generator="Gatsby">`, `gatsby-focus-wrapper` | — |
+| **React** | `data-reactroot`, `__reactFiber`, `/static/js/main.xxx.js` | Generic React SPAs |
+| **Vue** | `__VUE__`, `vue-router`, `__vue_app__`, `/assets/index.xxx.js` | behance.net, laravel.com |
+| **Angular** | `ng-version=`, `<app-root>`, `__ngContext__`, `/runtime.xxx.js`, `zone.js` | angular.io, rxjs.dev |
+| **Svelte** | `svelte-xxxxxx`, `__svelte`, `/assets/index.xxx.js` | svelte.dev, kit.svelte.dev |
+
+### Anti-Bot Protection Detected
+- **Cloudflare** — `cf-browser-verification`, `turnstile`, `challenge-platform`, `/cdn-cgi/challenge`
+- **DataDome** — `datadome`, `captcha-delivery`
+- **PerimeterX** — `perimeterx`, `px-captcha`
+- **CAPTCHA** — recaptcha, hCaptcha
+- **Generic** — "Just a moment..." page titles
+
+### Stealth Capabilities
+- `navigator.webdriver` → `undefined`
+- `navigator.plugins` → realistic Chrome plugin list
+- `navigator.mimeTypes` → realistic MIME types
+- WebGL vendor spoofing → Intel Iris Xe Graphics
+- Safe `permissions.query` API handling
 
 ---
 
@@ -153,104 +174,79 @@ There is **no React/Vue frontend yet** — v2.6 exposes the crawler through a **
 
 ```
 NEXUS AURORA/
-├── README.md                          ← this file
-├── LICENSE                            MIT license
-│
-├── Nexora application/                ← canonical application source (use this)
+├── README.md
+├── REPOSITORY_STRUCTURE.md
+├── Nexora application/            ← Main application source
 │   ├── requirements.txt
-│   ├── Extractor/                     Phase 1 — single-page extraction
-│   │   ├── main.py                    CLI entry point
-│   │   ├── Web_fetcher.py
-│   │   ├── Beautifulsoup_extractor.py
-│   │   ├── Trafilatura_extractor.py
-│   │   ├── parser.py                  JSON-LD, OG, Twitter, assets
-│   │   ├── cleaner.py                 SimHash + language detection
-│   │   ├── style_extractor.py         CSS/design intelligence
-│   │   ├── sitemap_parser.py
-│   │   └── Save_web_exctract.py
-│   │
-│   ├── Crawler/                       Phase 2 / 2.6 — Scrapy project
-│   │   ├── scrapy.cfg
-│   │   ├── run_nexora.py              Cache-bypass Scrapy runner
+│   ├── Crawler/                   Scrapy project with Phase 3 middleware
 │   │   └── nexora_crawler/
-│   │       ├── api.py                 FastAPI + interactive CLI
-│   │       ├── settings.py            Scrapy configuration
-│   │       ├── items.py               NexoraPageItem schema
-│   │       ├── pipelines.py           4-stage pipeline chain
-│   │       ├── middlewares.py         UA rotation, content filtering, Playwright
-│   │       ├── sitemap_detector.py    Async sitemap discovery
-│   │       └── spiders/
-│   │           └── nexora_spider.py   Main crawl spider
-│   │
-│   ├── dashboard/
-│   │   └── app.py                     Streamlit UI (Phase 5)
-│   │
-│   └── tests/
-│       └── test_nexora_phase26.py     Phase 2.6 test suite
-│
-├── nexora app v2/                     Legacy working copy with sample output
-│   └── Nexora application/            Prefer canonical copy above
-│
-└── Project Tools/                     Architecture specs and phase roadmaps
+│   │       ├── middlewares/
+│   │       │   ├── dynamic_detection.py    ★ Phase 3 core engine
+│   │       │   └── playwright_cleanup.py
+│   │       ├── spiders/
+│   │       │   └── nexora_spider.py
+│   │       ├── api.py             FastAPI + interactive CLI
+│   │       ├── settings.py
+│   │       ├── pipelines.py
+│   │       └── sitemap_detector.py
+│   ├── Extractor/                 Phase 1 — single-page extraction
+│   ├── Models/
+│   │   └── lid.176.ftz            Language detection model
+│   ├── output/
+│   │   ├── audit/                 ★ Benchmark reports & architecture docs
+│   │   ├── pages/                 Crawled page exports
+│   │   └── master_dataset.csv
+│   ├── tests/
+│   │   ├── real_site_benchmark_phase3.py   ★ 50-site benchmark
+│   │   ├── real_site_test_phase3.py        ★ Quick validation
+│   │   └── test_phase3_*.py
+│   └── release_notes_v3.4.0.md
+├── data/
+│   └── test_profiles.db           SQLite site profile cache
+└── Project Tools/                 Specs and roadmaps
 ```
 
-> **Which copy to use?** Always use `Nexora application/` at the repo root. The `nexora app v2/` folder is a legacy snapshot with sample BBC crawl output; it lacks Phase 2.6 API and sitemap files.
+For full details, see [REPOSITORY_STRUCTURE.md](REPOSITORY_STRUCTURE.md).
 
 ---
 
 ## Installation
 
 ### Prerequisites
-
 - Python 3.11 or later
 - pip
 
 ### Install Dependencies
-
 ```powershell
 cd "Nexora application"
 pip install -r requirements.txt
 ```
 
-### Optional: Playwright (Phase 3 JS rendering)
-
+### Install Playwright (for JS rendering)
 ```powershell
 pip install scrapy-playwright playwright
 playwright install chromium
-set NEXORA_PLAYWRIGHT=1
+set NEXORA_PLAYWRIGHT_ENABLED=1
 ```
 
 ### Optional: Language Detection Model
-
-Download the FastText model to:
-
-```
-Nexora application/Extractor/lid.176.ftz
-```
-
-Language detection falls back gracefully if the model is absent.
+Download the FastText model to `Nexora application/Models/lid.176.ftz`. Language detection falls back gracefully if absent.
 
 ---
 
 ## Usage
 
 ### Phase 1 — Single Page Extraction
-
 ```powershell
 cd "Nexora application/Extractor"
 python main.py https://example.com
 ```
 
-Output: `Nexora application/output/<domain>.json` and `.csv`
-
----
-
 ### Phase 2 — Scrapy Crawler
-
 ```powershell
 cd "Nexora application/Crawler"
 
-# Single page only
+# Single page
 scrapy crawl nexora -a urls="https://example.com"
 
 # Linked pages (depth 1)
@@ -258,82 +254,56 @@ scrapy crawl nexora -a urls="https://example.com" -a strategy="linked-pages"
 
 # Whole website (sitemap auto-discovery)
 scrapy crawl nexora -a urls="https://example.com" -a strategy="whole-website"
-
-# Cache-bypass runner (clears __pycache__ before crawl)
-python run_nexora.py -a urls="https://example.com" -a strategy="whole-website"
 ```
 
----
-
-### Phase 2.6 — Interactive CLI
-
+### Phase 2.6 — Interactive CLI & API
 ```powershell
+# Interactive CLI
 cd "Nexora application/Crawler"
 python -m nexora_crawler.api
-```
 
----
-
-### Phase 2.6 — FastAPI REST API
-
-```powershell
-cd "Nexora application/Crawler"
+# FastAPI REST server
 python -m nexora_crawler.api --server
-
-# Or directly with uvicorn
-uvicorn nexora_crawler.api:app --reload --port 8000
+# API docs: http://localhost:8000/docs
 ```
 
-API docs: `http://localhost:8000/docs`
-
-#### Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/` | Service info and available strategies |
-| `GET` | `/strategies` | Strategy list with descriptions |
-| `POST` | `/crawl` | Start a new crawl job |
-| `GET` | `/crawl/{job_id}` | Poll job status |
-| `GET` | `/jobs` | List all jobs |
-
-#### Example
-
-```bash
-curl -X POST http://localhost:8000/crawl \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://www.bbc.com", "strategy": "whole-website", "max_pages": 100}'
-```
-
----
-
-### Phase 5 — Streamlit Dashboard
-
-Start the API server first, then launch the dashboard:
+### Phase 3 — Dynamic Detection Middleware
+The middleware runs automatically when using the Scrapy crawler with `NEXORA_PLAYWRIGHT_ENABLED=1`:
 
 ```powershell
-# Terminal 1 — API
-cd "Nexora application/Crawler"
-uvicorn nexora_crawler.api:app --port 8000
-
-# Terminal 2 — Dashboard
-cd "Nexora application"
-streamlit run dashboard/app.py
+set NEXORA_PLAYWRIGHT_ENABLED=1
+set NEXORA_STEALTH_ENABLED=1
+scrapy crawl nexora -a urls="https://example.com"
 ```
 
-Open `http://localhost:8501` to start crawls, monitor progress, and browse results.
+The middleware:
+1. Probes each URL via HTTP (httpx)
+2. Decides if JS rendering is needed (8 signals)
+3. Caches the decision in SQLite (24-hour TTL)
+4. Routes to Playwright only for JS-required pages
+
+### Benchmark Suite
+```powershell
+# Quick validation (4 tests, ~10 sites)
+cd "Nexora application"
+python tests/real_site_test_phase3.py
+
+# Full 50-site benchmark (~4 minutes, rate-limited)
+python tests/real_site_benchmark_phase3.py
+```
 
 ---
 
 ## Crawl Strategies
 
-| Strategy | Depth | Mode | Description |
-|----------|-------|------|-------------|
-| `single-page` | 0 | single-page | Process only the seed URL |
-| `linked-pages` | 1 | multi-page | Seed URL + all pages it directly links to |
-| `whole-website` | 3 | auto | Auto-detect sitemap; fallback to depth-3 link crawl |
-| `everything` | 5 | multi-page | Deep domain crawl (depth 5), locked to seed domain |
+| Strategy | Depth | Description |
+|----------|-------|-------------|
+| `single-page` | 0 | Process only the seed URL |
+| `linked-pages` | 1 | Seed URL + all direct links |
+| `whole-website` | 3 | Auto-detect sitemap; fallback to depth-3 crawl |
+| `everything` | 5 | Deep domain crawl (locked to seed domain) |
 
-All strategies respect the `max_pages` safety cap (default: 1000, max: 50000).
+All strategies respect `max_pages` safety cap (default: 1000, max: 50000).
 
 ---
 
@@ -347,8 +317,7 @@ output/
 └── master_dataset.csv
 ```
 
-### Key Output Fields
-
+### Key Fields
 | Field | Description |
 |-------|-------------|
 | `url` | Final resolved URL |
@@ -363,26 +332,19 @@ output/
 
 ---
 
-## Data Schema
-
-All crawled pages flow through `NexoraPageItem` in `Crawler/nexora_crawler/items.py` — 30+ fields covering spider metadata, extraction results, intelligence enrichments, style data, and export paths.
-
----
-
 ## Configuration
 
 Key settings in `Crawler/nexora_crawler/settings.py`:
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
+| `NEXORA_PLAYWRIGHT_ENABLED` | `True` | Enable Playwright for JS pages |
+| `NEXORA_STEALTH_ENABLED` | `True` | Apply bot-detection evasion |
+| `NEXORA_SITE_PROFILE_DB` | `data/site_profiles.db` | Profile cache path |
 | `ROBOTSTXT_OBEY` | `True` | Respect robots.txt |
 | `DOWNLOAD_DELAY` | `1.5` | Base delay between requests (seconds) |
-| `CONCURRENT_REQUESTS_PER_DOMAIN` | `1` | One request at a time per domain |
 | `AUTOTHROTTLE_ENABLED` | `True` | Adapt delay to server response time |
-| `DEPTH_LIMIT` | `0` | Hard ceiling (overridden per-run via spider args) |
 | `HTTPCACHE_ENABLED` | `True` | Cache responses during development |
-
-**Playwright:** Set environment variable `NEXORA_PLAYWRIGHT=1` to enable headless browser rendering for JS-heavy pages.
 
 ---
 
@@ -390,13 +352,16 @@ Key settings in `Crawler/nexora_crawler/settings.py`:
 
 ```powershell
 cd "Nexora application"
-pytest tests/test_nexora_phase26.py -v
 
-# Fast unit tests only
-pytest tests/test_nexora_phase26.py -v -k "not real"
+# Quick live-site validation (4 tests)
+python tests/real_site_test_phase3.py
 
-# Real HTTP tests (requires internet)
-pytest tests/test_nexora_phase26.py -v -k "real" -m slow
+# Full 50-site benchmark (~4 min)
+python tests/real_site_benchmark_phase3.py
+
+# Unit tests
+pytest tests/test_phase3_component.py -v
+pytest tests/test_phase3_integration.py -v
 ```
 
 ---
@@ -405,20 +370,23 @@ pytest tests/test_nexora_phase26.py -v -k "real" -m slow
 
 | Phase | Status | Scope |
 |-------|--------|-------|
-| **1** | Complete | Single-page extraction CLI |
-| **2 / 2.5** | Complete | Multi-page Scrapy crawler + style extraction |
-| **2.6** | Complete | FastAPI REST + interactive CLI + sitemap auto-discovery |
-| **3** | Opt-in | Playwright headless browser for JS/SPA sites |
-| **4** | Planned | AI summarization, embeddings, RAG pipeline |
-| **5** | Partial | Streamlit dashboard (v2.6); React UI planned |
+| **1** | ✅ Complete | Single-page extraction CLI |
+| **2 / 2.5** | ✅ Complete | Multi-page Scrapy crawler + style extraction |
+| **2.6** | ✅ Complete | FastAPI REST API + interactive CLI + sitemap discovery |
+| **3** | ✅ Complete (3.4) | DynamicDetectionMiddleware with 8-signal engine, 85-90% accuracy |
+| **3b** | 🔜 Next | Data storage pipeline + LLM integration |
+| **4** | 📋 Planned | AI summarization, embeddings, RAG pipeline |
+| **5** | 📋 Planned | Distributed crawling, shared profile cache |
+| **6** | 📋 Planned | Tauri desktop application |
 
 ---
 
-## Known Limitations (v2.6)
+## Known Limitations (v3.4)
 
-- **No authentication** — FastAPI endpoints are open; job store is in-memory only
-- **No persistent job storage** — Jobs are lost on server restart
-- **Playwright is opt-in** — Requires separate install and `NEXORA_PLAYWRIGHT=1`
+- **Network-dependent** — ~12% of sites may timeout; these correctly fallback to Playwright but add latency
+- **Angular production builds** — `ng-version=` attribute is removed; detection relies on bundle patterns
+- **No auth** — FastAPI endpoints are open; job store is in-memory only
+- **Some heavy SPAs** — TikTok relies on script ratio (>0.35) rather than framework markers
 - **Legacy copy** — `nexora app v2/` is a snapshot; use canonical `Nexora application/`
 
 ---
@@ -430,5 +398,5 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <strong>NEXUS AURORA v2.6</strong> — Website intelligence for ML, RAG, and competitive analysis.
+  <strong>NEXUS AURORA v3.4.0</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
 </p>
