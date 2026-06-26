@@ -143,27 +143,28 @@ async def probe_url(url: str) -> dict:
             total_tags = len(re.findall(r'<[a-zA-Z][^>]*>', html))
             script_ratio = script_count / total_tags if total_tags > 0 else 0.0
 
-            # Framework detection (mirrors dynamic_detection.py patterns)
+            # Framework detection (mirrors dynamic_detection.py v3.4+ patterns)
             frameworks = []
-            if re.search(r'__NEXT_DATA__|data-reactroot|data-reactid|id="__next"|id="__NEXT_F__"|/_next/', html, re.I):
+            # next.js
+            if re.search(r'__NEXT_DATA__|id="__next"|__NEXT_F__|/_next/static/chunks|\.next/server', html, re.I):
                 frameworks.append("next.js")
-            if re.search(r'data-reactroot|data-reactid|_reactListening', html, re.I):
+            # react (generic)
+            if re.search(r'data-reactroot|data-reactid|_reactListening|/static/js/(?:main\.)?[a-zA-Z0-9_-]+\.(?:js|mjs)|/assets/index[.-][a-zA-Z0-9_-]+\.(?:js|mjs)|__reactFiber', html, re.I):
                 frameworks.append("react")
-            if re.search(r'data-v-[a-f0-9]+|__VUE__', html, re.I):
+            # vue
+            if re.search(r'data-v-[a-f0-9]{8,}|__VUE__|vue-router|/assets/index[.-][a-zA-Z0-9_-]+\.(?:js|mjs)|__vue_app__', html, re.I):
                 frameworks.append("vue")
-            if re.search(r'ng-version=|ng-app=|_nghost-', html, re.I):
+            # angular
+            if re.search(r'ng-version\s*=|_nghost-|ng-app\s*=|__ngContext__|<app-root[\s>]|<app-[a-z][\s>]|<link[^>]*ng-cli|/runtime\.[a-f0-9]+\.js|/polyfills\.[a-f0-9]+\.js|zone\.js|main\.[a-f0-9]+\.js', html, re.I):
                 frameworks.append("angular")
-            if re.search(r'svelte-[a-z0-9]+', html, re.I):
+            # svelte
+            if re.search(r'svelte-[a-f0-9]{6,}|__svelte|/assets/index[.-][a-zA-Z0-9_-]+\.(?:js|mjs)', html, re.I):
                 frameworks.append("svelte")
-            if re.search(
-                r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Nuxt',
-                html, re.I
-            ):
+            # nuxt
+            if re.search(r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Nuxt[^.a-z]', html, re.I):
                 frameworks.append("nuxt")
-            if re.search(
-                r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Gatsby',
-                html, re.I
-            ):
+            # gatsby
+            if re.search(r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Gatsby|gatsby-focus-wrapper|id=["\']gatsby-noscript["\']', html, re.I):
                 frameworks.append("gatsby")
 
             # Anti-bot detection

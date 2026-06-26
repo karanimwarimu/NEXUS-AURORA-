@@ -29,22 +29,73 @@ logger = logging.getLogger(__name__)
 
 # JS Framework Detection Patterns
 JS_FRAMEWORK_PATTERNS = {
-    "next.js": re.compile(r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Next\.js|__NEXT_DATA__|id=["\']__next["\']|__NEXT_F__|next-future|/_next/', re.I),
-    "nuxt": re.compile(r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Nuxt', re.I),
-    "gatsby": re.compile(r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Gatsby', re.I),
-    "react": re.compile(r'data-reactroot|data-reactid|_reactListening', re.I),
-    "vue": re.compile(r'data-v-[a-f0-9]+|__VUE__|vue-router', re.I),
-    "angular": re.compile(r'ng-version=|ng-app=|_nghost-', re.I),
-    "svelte": re.compile(r'svelte-[a-z0-9]+|__svelte', re.I),
+    "next.js": re.compile(
+        r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Next\.js'
+        r'|__NEXT_DATA__|id=["\']__next["\']|__NEXT_F__|next-future|/_next/'
+        r'|/_next/static/chunks'  # Next.js bundle path
+        r'|\.next/server', re.I   # Next.js server bundle
+    ),
+    "nuxt": re.compile(
+        r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Nuxt[^.a-z]'
+        r'|data-v-[a-f0-9]{8,}|__VUE__', re.I
+    ),
+    "gatsby": re.compile(
+        r'<meta[^>]*name=["\']generator["\'][^>]*content=["\'][^"\']*Gatsby'
+        r'|gatsby-focus-wrapper|id=["\']gatsby-noscript["\']', re.I
+    ),
+    "react": re.compile(
+        r'data-reactroot|data-reactid|_reactListening'
+        r'|/static/js/(?:main\.)?[a-zA-Z0-9_-]+\.(?:js|mjs)'  # CRA/build bundle
+        r'|/assets/index[.-][a-zA-Z0-9_-]+\.(?:js|mjs)'       # Vite/SvelteKit bundle
+        r'|__reactFiber', re.I  # React Fiber internal
+    ),
+    "vue": re.compile(
+        r'data-v-[a-f0-9]{8,}|__VUE__|vue-router'
+        r'|/assets/index[.-][a-zA-Z0-9_-]+\.(?:js|mjs)'  # Vite Vue bundle
+        r'|__vue_app__', re.I
+    ),
+    "angular": re.compile(
+        r'ng-version\s*=|_nghost-|ng-app\s*='
+        r'|<app-root[\s>]|<app-[a-z][\s>]'
+        r'|__ngContext__'
+        r'|<link[^>]*ng-cli'
+        r'|/runtime\.[a-f0-9]+\.js'  # Angular runtime bundle
+        r'|/polyfills\.[a-f0-9]+\.js'  # Angular polyfills bundle
+        r'|zone\.js|main\.[a-f0-9]+\.js', re.I  # Angular zone.js + main bundle
+    ),
+    "svelte": re.compile(
+        r'svelte-[a-f0-9]{6,}|__svelte'
+        r'|/assets/index[.-][a-zA-Z0-9_-]+\.(?:js|mjs)', re.I  # SvelteKit bundle
+    ),
 }
 
 # Anti-bot challenge detection — specific patterns only, no broad matches
 ANTI_BOT_INDICATORS = [
-    re.compile(r'cf-browser-verification|cf-challenge|turnstile', re.I),
+    # Cloudflare challenge pages
+    re.compile(r'cf-browser-verification|cf-challenge|turnstile|_cf_chl_opt|cf_chl_proto|cf-chl-widget|challenge-platform', re.I),
+    # Generic CAPTCHA providers
     re.compile(r'captcha|recaptcha|hcaptcha', re.I),
+    # PerimeterX / Human Security
     re.compile(r'perimeterx|px-captcha', re.I),
+    # DataDome
     re.compile(r'datadome|captcha-delivery', re.I),
+    # Generic "Just a moment..." / challenge page titles (broad, but only checked on 403/429/503)
+    re.compile(r'<title>[^<]*(?:just a moment|verifying|checking your browser|attention[!]|security check)[^<]*</title>', re.I),
+    # Block pages with generic challenge scripts
+    re.compile(r'/_cf_chl/|/cdn-cgi/challenge', re.I),
 ]
+
+# SPA Mount Points — common <div> IDs that JS frameworks inject content into
+SPA_MOUNT_POINTS = re.compile(
+    r'<div[^>]*id=["\'](?:root|__next|__nuxt|app|react-root|js-app|gatsby-focus-wrapper|__svelte)["\']',
+    re.I,
+)
+
+# Noscript "requires JS" patterns — sites that show a <noscript> telling users to enable JS
+NOSCRIPT_REQUIRES_JS = re.compile(
+    r'<noscript[^>]*>[^<]*(?:enable JavaScript|JavaScript is required|requires JavaScript|JavaScript must be enabled|you need to enable JavaScript)[^<]*</noscript>',
+    re.I,
+)
 
 # Cache TTL: re-probe a site after this many seconds (default 24 hours)
 PROFILE_CACHE_TTL_SECONDS = 86400
@@ -107,7 +158,7 @@ class DynamicDetectionMiddleware:
 
     def _create_http_client(self):
         return httpx.AsyncClient(
-            timeout=httpx.Timeout(5.0, connect=2.0),
+            timeout=httpx.Timeout(10.0, connect=5.0),
             follow_redirects=True,
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -198,9 +249,12 @@ class DynamicDetectionMiddleware:
             response = await self._client.get(url, follow_redirects=True)
             html = response.text
 
-            # 1. Anti-bot challenge detection
+            # 1. Anti-bot challenge detection (check ALL status codes, not just 403/429/503)
+            #    Some sites return 200 with a challenge page that blocks real content
             if self._detects_anti_bot(html, response.status_code):
                 return (True, "anti-bot challenge detected")
+            if self._detects_anti_bot_on_200(html, response.status_code):
+                return (True, "anti-bot challenge detected (200 status)")
 
             # 2. Body content analysis — short body only triggers if also has scripts
             body_match = re.search(r'<body[^>]*>(.*?)</body>', html, re.DOTALL | re.I)
@@ -212,16 +266,33 @@ class DynamicDetectionMiddleware:
                     return (True, f"short body ({len(body_content)} chars) + significant JS ratio ({script_ratio:.2f})")
 
             # 3. Text density — very low means mostly markup (SPA shell)
+            #    Only trigger if body is also small (< 5000 chars). Image-heavy
+            #    catalogs (books.toscrape, galleries) have low text density but 
+            #    large bodies — they don't need JS rendering.
             text_density = self._calculate_text_density(html)
-            if text_density < 0.05:
+            body_len = len(body_match.group(1).strip()) if body_match else 0
+            if text_density < 0.05 and body_len < 5000:
                 return (True, f"very low text density ({text_density:.4f})")
+            if text_density < 0.03 and body_len < 20000:
+                return (True, f"very low text density ({text_density:.4f}) — large body but extremely markup-heavy")
 
             # 4. JS framework detection
             framework = self._detect_framework(html)
             if framework:
                 return (True, f"JS framework detected: {framework}")
 
-            # 5. High script-to-tag ratio
+            # 5. SPA mount point detection
+            #    Some SPAs hide framework markers but have a <div id="root"> or similar
+            if SPA_MOUNT_POINTS.search(html) and script_ratio > 0.02:
+                # Only flag if there are some scripts (not just a static placeholder)
+                return (True, "SPA mount point detected")
+
+            # 6. Modern CSS bundles (Vite/Webpack style hashed CSS)
+            #    SPAs often load hashed CSS bundles that indicate a build system
+            if self._detects_modern_bundle_patterns(html, body_len):
+                return (True, "modern JS bundle patterns detected")
+
+            # 7. High script-to-tag ratio
             if script_ratio > 0.35:
                 return (True, f"high script ratio ({script_ratio:.2f})")
 
@@ -239,6 +310,46 @@ class DynamicDetectionMiddleware:
             for pattern in ANTI_BOT_INDICATORS:
                 if pattern.search(html):
                     return True
+        return False
+
+    def _detects_anti_bot_on_200(self, html, status_code):
+        """Detect anti-bot challenges that return HTTP 200 (stealth challenges).
+        
+        Some sites (Cloudflare, DataDome) serve a 200-status challenge page
+        that looks like the real site but blocks actual content. We check for
+        specific challenge script paths and markers even on 200 responses.
+        """
+        if status_code != 200:
+            return False
+        # Check for specific challenge markers in script paths
+        if re.search(r'/cdn-cgi/challenge|/_cf_chl/', html, re.I):
+            return True
+        # Check for Cloudflare challenge platform identifier
+        if re.search(r'challenge-platform', html, re.I):
+            return True
+        # Check for DataDome/hCaptcha delivery on 200
+        if re.search(r'captcha-delivery|hcaptcha\.com/1/api\.js', html, re.I):
+            return True
+        return False
+
+    def _detects_modern_bundle_patterns(self, html, body_len):
+        """Detect modern JS bundle/build system patterns that indicate SPA.
+        
+        Looks for Vite/Webpack/Parcel hashed bundle references in script/link tags.
+        Avoids false positives by requiring body_len to be small (< 10000 chars)
+        — large-body static sites can have bundle-like patterns in footers.
+        """
+        if body_len > 10000:
+            return False
+        # Vite hashed assets: /assets/name.hash.js, /assets/name.hash.css
+        if re.search(r'/(?:assets|static)/[a-zA-Z0-9_-]+\.\w{8,}\.(?:js|css|mjs)', html):
+            return True
+        # Webpack runtime~main pattern
+        if re.search(r'runtime[~\.][a-fA-F0-9]{8,}', html):
+            return True
+        # ESM module imports with hashed names
+        if re.search(r'<script[^>]*type=["\']module["\'][^>]*src=["\'][^"\']*\.[a-fA-F0-9]{8,}\.(?:js|mjs)', html):
+            return True
         return False
 
     def _calculate_text_density(self, html):
