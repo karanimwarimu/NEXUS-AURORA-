@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -35,16 +36,25 @@ from pydantic import BaseModel, Field, HttpUrl
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
 
+# Ensure the project root is on sys.path for `python api.py` direct execution
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 # Ensure project settings are loaded
 import nexora_crawler.settings  # noqa: F401
 
 
 # ── Logging ────────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-)
+# Avoid duplicate handlers when Scrapy/uvicorn configure logging.
 log = logging.getLogger("nexora.api")
+if not log.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+    handler.setFormatter(formatter)
+    log.addHandler(handler)
+log.setLevel(logging.INFO)
+
 
 
 # ── Pydantic Models ────────────────────────────────────────────────────────

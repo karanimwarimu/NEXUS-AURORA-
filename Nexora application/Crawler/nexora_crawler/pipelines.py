@@ -25,9 +25,18 @@ from urllib.parse import urlparse
 log = logging.getLogger("nexora.pipeline")
 
 
+# Add the Crawler/ directory (parent) to sys.path so Extractor/ is importable from any execution context.
+# __file__ = .../Crawler/nexora_crawler/pipelines.py
+# We need .../Nexora application/ to be on the path so "from Extractor.Beautifulsoup_extractor import ..." works.
+# Setting up the path relative to this file ensures consistency regardless of CWD.
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
+
+# Also add Crawler/ itself for scrapy.cfg discovery
+_CRAWLER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _CRAWLER_DIR not in sys.path:
+    sys.path.insert(0, _CRAWLER_DIR)
 
 
 from Extractor.Beautifulsoup_extractor import extract_with_bs4  # noqa: E402

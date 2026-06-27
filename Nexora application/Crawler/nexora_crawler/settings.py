@@ -10,8 +10,19 @@ Phase 3 additions are clearly marked — uncomment when ready.
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load from project root regardless of where the script runs
-env_path = Path(__file__).resolve().parents[3] / ".env"  # adjust depth as needed
+"""
+Load environment variables from the .env file located next to this settings file.
+
+File structure:
+  Nexora application/
+    Crawler/
+      nexora_crawler/
+        settings.py       ← we are here
+        .env              ← env vars are here
+Path: __file__ → parents[0]=nexora_crawler → parents[1]=Crawler → parents[2]=Nexora application
+Use parents[1] to get the nexora_crawler directory containing .env
+"""
+env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(env_path)
 
 # ── Identity ──────────────────────────────────────────────────────────────────
@@ -85,9 +96,6 @@ DOWNLOADER_MIDDLEWARES = {
     "nexora_crawler.middlewares.ContentTypeFilterMiddleware": 510,
     # Dynamic detection — identifies JS-heavy pages BEFORE Playwright handler (priority < 543)
     "nexora_crawler.middlewares.dynamic_detection.DynamicDetectionMiddleware": 542,
-    # Playwright integration — enables JS rendering (handler at 543)
-    "scrapy_playwright.middleware.ScrapyPlaywrightDownloadHandler": 543,
-    # Playwright routing — removed: replaced by DynamicDetectionMiddleware above
     # Playwright cleanup — closes pages to prevent memory leaks
     "nexora_crawler.middlewares.playwright_cleanup.PlaywrightCleanupMiddleware": 550,
     # Exponential backoff — TODO Phase 4
@@ -123,32 +131,45 @@ DEFAULT_REQUEST_HEADERS = {
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_LEVEL = "INFO"
 
-# PHASE 3: PLAYWRIGHT INTEGRATION SETTINGS
+# ── Phase 3: Playwright — OPT-IN via env var or .env ───────────────────────
+# DynamicDetectionMiddleware reads this setting. When False (default), all
+# requests go through standard HTTP — no playwright, no probe that tries to
+# set playwright_meta on requests.
+# Set NEXORA_PLAYWRIGHT_ENABLED=true in .env or environment to enable.
+import os
+NEXORA_PLAYWRIGHT_ENABLED = os.getenv("NEXORA_PLAYWRIGHT_ENABLED", "false").lower() in ("1", "true", "yes")
+NEXORA_STEALTH_ENABLED = os.getenv("NEXORA_STEALTH_ENABLED", "true").lower() in ("1", "true", "yes")
 
-# Async reactor required for Playwright
-TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
+if NEXORA_PLAYWRIGHT_ENABLED:
+    # Async reactor required for Playwright
+    TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 
-# Download handlers
-DOWNLOAD_HANDLERS = {
-    "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
-    "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
-}
+    # Download handlers — Playwright routes requests through Chromium
+    DOWNLOAD_HANDLERS = {
+        "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+        "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+    }
 
-PLAYWRIGHT_BROWSER_TYPE = "chromium"
-PLAYWRIGHT_LAUNCH_OPTIONS = {
-    "headless": True,
-    "args": [
-        "--disable-blink-features=AutomationControlled",
-        "--disable-dev-shm-usage",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--disable-background-networking",
-        "--disable-background-timer-throttling",
-        "--disable-renderer-backgrounding",
-        "--disable-features=IsolateOrigins,site-per-process",
-        "--disable-site-isolation-trials",
-    ],
-}
+    PLAYWRIGHT_BROWSER_TYPE = "chromium"
+    PLAYWRIGHT_LAUNCH_OPTIONS = {
+        "headless": True,
+        "args": [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-networking",
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-site-isolation-trials",
+        ],
+    }
 
-PLAYWRIGHT_MAX_PAGES_PER_CONTEXT = 5
-PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 30000
+    PLAYWRIGHT_MAX_PAGES_PER_CONTEXT = 5
+    PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 30000
+
+    # Add Playwright handler middleware to the chain
+    DOWNLOADER_MIDDLEWARES.update({
+        "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler": 543,
+    })

@@ -70,20 +70,39 @@ JS_FRAMEWORK_PATTERNS = {
 }
 
 # Anti-bot challenge detection — specific patterns only, no broad matches
+# Note: detection is intentionally conservative to reduce false positives,
+# but we also add additional vendor-specific markers to address common
+# stealth/challenge variants that return 200 or short bodies.
 ANTI_BOT_INDICATORS = [
-    # Cloudflare challenge pages
+    # Cloudflare (classic + managed challenge + bot mgmt)
     re.compile(r'cf-browser-verification|cf-challenge|turnstile|_cf_chl_opt|cf_chl_proto|cf-chl-widget|challenge-platform', re.I),
-    # Generic CAPTCHA providers
-    re.compile(r'captcha|recaptcha|hcaptcha', re.I),
-    # PerimeterX / Human Security
-    re.compile(r'perimeterx|px-captcha', re.I),
+    re.compile(r'/_cf_chl/|/cdn-cgi/challenge', re.I),
+    re.compile(r'cf-browser-verification|cf-chl|__cf_bm|cf_clearance|__cfduid', re.I),
+
+    # Cloudflare managed / one-two phrases seen in HTML
+    re.compile(r'<title>[^<]*(?:checking your browser|just a moment|verifying you are human|security check)[^<]*</title>', re.I),
+
     # DataDome
     re.compile(r'datadome|captcha-delivery', re.I),
-    # Generic "Just a moment..." / challenge page titles (broad, but only checked on 403/429/503)
-    re.compile(r'<title>[^<]*(?:just a moment|verifying|checking your browser|attention[!]|security check)[^<]*</title>', re.I),
-    # Block pages with generic challenge scripts
-    re.compile(r'/_cf_chl/|/cdn-cgi/challenge', re.I),
+
+    # hCaptcha / reCaptcha (often in challenge flows)
+    re.compile(r'captcha|recaptcha|hcaptcha', re.I),
+
+    # PerimeterX / Human Security
+    re.compile(r'perimeterx|px-captcha', re.I),
+
+    # Akamai Bot Manager / Bot Detection
+    re.compile(r'_abck|bm_sz|ak_bmsc|akamai|bot manager', re.I),
+    re.compile(r'/abtest/|/akamai/', re.I),
+    # Common Akamai challenge script shapes
+    re.compile(r'(?:__cf_chl_tk|abck|bm_sz)\b', re.I),
+
+    # Generic challenge page fallbacks (still anchored to known phrases)
+    re.compile(r'<title>[^<]*(?:attention required|blocked|security check|verifying)[^<]*</title>', re.I),
 ]
+
+
+
 
 # SPA Mount Points — common <div> IDs that JS frameworks inject content into
 SPA_MOUNT_POINTS = re.compile(
@@ -168,7 +187,8 @@ class DynamicDetectionMiddleware:
                 "DNT": "1",
                 "Connection": "keep-alive",
             },
-            http2=True,
+            # http2=True intentionally removed — causes ImportError when h2 package absent,
+            # and is not needed for static probe which is HTTP/1.1 only
         )
 
     def spider_closed(self, spider):
@@ -189,15 +209,19 @@ class DynamicDetectionMiddleware:
 
     # CORE DECISION ENGINE
     async def process_request(self, request, spider):
+
         if not self.playwright_enabled:
             logger.debug("[DD] Playwright disabled — all requests go HTTP")
             return None
         if not self._is_html_request(request):
             logger.debug("[DD] Non-HTML request skipped: %s", request.url)
             return None
+        # SAFETY: if a request already has playwright=True but we're here,
+        # it means no PlaywrightDownloadHandler is registered (PW disabled).
+        # Do NOT re-apply — just let it pass through as HTTP.
         if request.meta.get("playwright") is True:
-            logger.debug("[DD] User override: force Playwright for %s", request.url)
-            return self._apply_playwright_meta(request)
+            logger.debug("[DD] Safety: playwright=True found but no handler — letting through as HTTP")
+            return None
         if request.meta.get("playwright") is False:
             logger.debug("[DD] User override: force HTTP for %s", request.url)
             return None
@@ -276,12 +300,21 @@ class DynamicDetectionMiddleware:
             if text_density < 0.03 and body_len < 20000:
                 return (True, f"very low text density ({text_density:.4f}) — large body but extremely markup-heavy")
 
-            # 4. JS framework detection
+            # 4. JS framework detection (with Next.js SSR guard)
             framework = self._detect_framework(html)
             if framework:
+                # Next.js SSR can look like a "framework shell" but still contains
+                # substantial readable text. Avoid unnecessary Playwright cycles.
+                if framework == "next.js":
+                    next_data = re.search(r'__NEXT_DATA__\s*=\s*({.*?})\s*;?', html, re.DOTALL)
+                    # If __NEXT_DATA__ exists and the server rendered body is big,
+                    # treat as SSR.
+                    if next_data and body_len > 10000:
+                        return (False, "Next.js SSR guard: __NEXT_DATA__ present + substantial body")
                 return (True, f"JS framework detected: {framework}")
 
             # 5. SPA mount point detection
+
             #    Some SPAs hide framework markers but have a <div id="root"> or similar
             if SPA_MOUNT_POINTS.search(html) and script_ratio > 0.02:
                 # Only flag if there are some scripts (not just a static placeholder)
@@ -303,14 +336,22 @@ class DynamicDetectionMiddleware:
 
     def _detects_anti_bot(self, html, status_code):
         """Detect anti-bot challenges by matching specific indicators.
-        
-        Only matches anti-bot challenge-specific patterns (not broad terms like "cloudflare").
+
+        Improvements for industry robustness:
+        - Flag short 403/429/503 responses as "possible block" even if indicators
+          don't match (common for stealth edge protections).
+        - Keep indicator matching conservative, but extend vendor markers above.
         """
         if status_code in (403, 429, 503):
+            # Short-body blocks are common when edge challenges hide details.
+            # Treat it as suspicious to reduce false negatives.
+            if len(html or "") < 1024:
+                return True
             for pattern in ANTI_BOT_INDICATORS:
                 if pattern.search(html):
                     return True
         return False
+
 
     def _detects_anti_bot_on_200(self, html, status_code):
         """Detect anti-bot challenges that return HTTP 200 (stealth challenges).

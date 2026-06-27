@@ -32,12 +32,14 @@ class PlaywrightCleanupMiddleware:
                 logger.warning("[PlaywrightCleanup] Page close failed for %s: %s",
                                request.url, exc)
 
-    async def process_response(self, request, response, spider):
+    async def process_response(self, request, response):
+
         """Close Playwright page after successful response."""
         await self._close_page(request)
         return response
 
-    async def process_exception(self, request, exception, spider):
+    async def process_exception(self, request, exception):
+
         """Close Playwright page when an exception occurs during download.
 
         Without this handler, pages leak on timeouts, connection errors,

@@ -1,0 +1,50 @@
+Current Data Storage — What You Get
+Looking at the actual data produced (output/pages/*.json and master_dataset.csv):
+
+Each page gets:
+
+A JSON file with the full item (≈1085 lines per page for BBC) — includes raw HTML, all extracted fields
+A CSV file with flattened representation
+One row in master_dataset.csv with 21 curated fields
+The problem: The JSON stores EVERYTHING including raw HTML (1MB+ per page). The CSV is readable but has no schema enforcement. There is no relational database, no clean Markdown, no Parquet export, no unified schema enforcement.
+
+Industry Standard Gap Analysis
+Capability	Current Status	Industry Standard	Phase 4A Fix
+Data Storage	Siloed JSON/CSV files	Relational + Columnar (SQLite + Parquet)	MetadataStore (SQLite) + ParquetExportPipeline
+Content Format	Raw HTML + clean_text	Markdown (LLM-ready, 60-80% token reduction)	MarkdownExtractionPipeline
+Schema Enforcement	None — fields can be None	Enforced schemas with defaults	UnifiedSchemaEnricher
+Asset Metadata	Basic image_assets from parser.py	Structured image + video metadata	MultimodalAssetExtractor
+Crawl Tracking	In-memory dict in api.py	Persistent DB (crawl_jobs table)	MetadataStore.crawl_jobs table
+Query Capability	Manual file search	SQL queries by domain/crawl_id/type	MetadataStore.query_by_*
+ML Pipeline Ready	CSV only (text-heavy)	Columnar Parquet (compressed 70%+)	ParquetExportPipeline
+Field Completeness	Empty/unset fields common	All fields present with defaults	UnifiedSchemaEnricher
+Test With One Website — Let Me Show You
+Here's what the current system produces for a real BBC article crawl (which already happened based on master_dataset.csv):
+
+Master dataset row for the BBC article:
+
+
+url: https://www.bbc.com/news/articles/cx21r1y223ro
+title: "China bans four New Zealand MPs over Taiwan visit"
+word_count_raw: 640, word_count_clean: 640
+framework: tailwind, theme: dark, layout: flex
+playwright_used: FALSE, depth: 2
+What's MISSING from this row:
+
+No markdown field (it stores clean_text but not Markdown)
+No crawl_id to group this page with others from the same crawl
+No timestamp in the master dataset
+No entities (prices, tickers, products)
+No image_assets or video_assets in master CSV
+No quality_scores (readability, duplication, text density)
+No website_type classification (it's an "article" but doesn't say so)
+After Phase 4A, the same crawl would additionally produce:
+
+A SQLite database with queryable records
+Compressed Parquet files for ML pipelines
+Clean Markdown content ready for LLM ingestion (≈80% token reduction vs raw HTML)
+All fields guaranteed to be present with sensible defaults
+My Recommendation
+We should proceed with Phase 4A implementation. The current system works and crawls successfully (proven by 50-site benchmark at 84.8% accuracy), but the data it produces is not ready for AI pipelines, ML consumption, or efficient querying. Phase 4A transforms it from a scraper into a proper data ingestion engine.
+
+Toggle to Act mode and I'll implement all 8 files following the spec. Then we can run a test crawl and verify the results end-to-end.
