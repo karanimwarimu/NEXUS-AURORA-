@@ -305,18 +305,37 @@ class DynamicDetectionMiddleware:
             if framework:
                 # Next.js SSR can look like a "framework shell" but still contains
                 # substantial readable text. Avoid unnecessary Playwright cycles.
+                # However, some Next.js sites still need Playwright for:
+                #   - Client-side routing/interactivity
+                #   - Dynamic content loading after hydration
+                #   - SPA mode apps that ship large static HTML shells
+                # We only skip PW if the site is genuinely static (no SPA mount,
+                # no noscript "requires JS" message, and body is genuinely readable).
                 if framework == "next.js":
                     next_data = re.search(r'__NEXT_DATA__\s*=\s*({.*?})\s*;?', html, re.DOTALL)
-                    # If __NEXT_DATA__ exists and the server rendered body is big,
-                    # treat as SSR.
-                    if next_data and body_len > 10000:
-                        return (False, "Next.js SSR guard: __NEXT_DATA__ present + substantial body")
+                    # Only treat as SSR if ALL conditions met:
+                    # 1. __NEXT_DATA__ present (SSG/SSR)
+                    # 2. Body is large (> 10000 chars = meaningful content)
+                    # 3. No SPA mount point (not a client-shell app)
+                    # 4. No "requires JavaScript" noscript tag
+                    # 5. Script ratio is low (< 0.05 = mostly static content)
+                    has_spa_mount = bool(SPA_MOUNT_POINTS.search(html))
+                    has_noscript_js = bool(NOSCRIPT_REQUIRES_JS.search(html))
+                    script_ratio_val = script_ratio
+                    
+                    if (next_data and body_len > 10000 
+                        and not has_spa_mount 
+                        and not has_noscript_js 
+                        and script_ratio_val < 0.05):
+                        return (False, "Next.js SSR guard: SSG content detected (large body, no SPA mount, low script ratio)")
                 return (True, f"JS framework detected: {framework}")
 
             # 5. SPA mount point detection
 
             #    Some SPAs hide framework markers but have a <div id="root"> or similar
-            if SPA_MOUNT_POINTS.search(html) and script_ratio > 0.02:
+            #    Lowered threshold from 0.02 to 0.01 to catch more SPA shells
+            #    (reddit.com, airbnb.com, etc. have minimal inline scripts)
+            if SPA_MOUNT_POINTS.search(html) and script_ratio > 0.01:
                 # Only flag if there are some scripts (not just a static placeholder)
                 return (True, "SPA mount point detected")
 
@@ -356,21 +375,41 @@ class DynamicDetectionMiddleware:
     def _detects_anti_bot_on_200(self, html, status_code):
         """Detect anti-bot challenges that return HTTP 200 (stealth challenges).
         
-        Some sites (Cloudflare, DataDome) serve a 200-status challenge page
-        that looks like the real site but blocks actual content. We check for
-        specific challenge script paths and markers even on 200 responses.
+        Expanded in v3.4b to cover:
+        - Cloudflare JS challenge (cdn-cgi/scripts, cf_chl_opt)
+        - DataDome challenge (ddg id, datadome JS)
+        - Generic "checking browser" page titles
+        - CAPTCHA widget loading (hCaptcha, reCaptcha)
+        - Short body + anti-bot keyword combination heuristic
         """
         if status_code != 200:
             return False
-        # Check for specific challenge markers in script paths
-        if re.search(r'/cdn-cgi/challenge|/_cf_chl/', html, re.I):
+        
+        # 1. Cloudflare challenge script paths
+        if re.search(r'/cdn-cgi/challenge|/_cf_chl/|/cdn-cgi/scripts/', html, re.I):
             return True
-        # Check for Cloudflare challenge platform identifier
-        if re.search(r'challenge-platform', html, re.I):
+        
+        # 2. Cloudflare challenge platform identifiers (often in inline scripts)
+        if re.search(r'challenge-platform|_cf_chl_opt|cf_chl_proto|cf_chl_opt', html, re.I):
             return True
-        # Check for DataDome/hCaptcha delivery on 200
-        if re.search(r'captcha-delivery|hcaptcha\.com/1/api\.js', html, re.I):
+        if re.search(r'window\._cf_chl_opt|cf\.challenge|turnstile\.render', html, re.I):
             return True
+        
+        # 3. DataDome/hCaptcha delivery on 200
+        if re.search(r'captcha-delivery|hcaptcha\.com/1/api\.js|hcaptcha\.com/1/",', html, re.I):
+            return True
+        if re.search(r'datadome\.co|ddg\d{1,3}\.\w+\.js|/ddg\b', html, re.I):
+            return True
+        
+        # 4. Generic challenge page titles on 200 (Cloudflare, DataDome, Akamai)
+        if re.search(r'<title>[^<]*(?:checking your browser|just a moment|verifying you are human|verifying|security check|attention required)[^<]*</title>', html, re.I):
+            return True
+        
+        # 5. Short body (< 500 bytes) on 200 + any anti-bot keyword = very suspicious
+        if len(html) < 500:
+            if re.search(r'cf_|turnstile|challenge|captcha|datadome|_abck|akamai|bot.?manager|blocked', html, re.I):
+                return True
+        
         return False
 
     def _detects_modern_bundle_patterns(self, html, body_len):

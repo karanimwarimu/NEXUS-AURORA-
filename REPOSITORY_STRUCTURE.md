@@ -49,6 +49,7 @@
 │   │   └── lid.176.ftz      ← Language detection model
 │   ├── output/
 │   │   ├── master_dataset.csv
+│   │   ├── release_notes_v3b_v0.4.0.md     ← Release notes for this version
 │   │   ├── pages/                           ← Crawled page exports (CSV+JSON)
 │   │   └── audit/                           ← Benchmark reports & test results
 │   │       ├── phase3_3_test_summary.md

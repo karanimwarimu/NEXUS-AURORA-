@@ -1,18 +1,18 @@
-# NEXUS AURORA v3.4.0
+# NEXUS AURORA v3b v0.4.0
 
-> AI-powered website intelligence platform that intelligently routes between static HTTP and Playwright JS rendering — crawls, analyzes, and extracts structured knowledge from websites for machine learning, RAG, and competitive intelligence.
+> AI-powered website intelligence platform with static-first routing, browser-aware extraction, and hardened crawl safety for production-grade web intelligence workflows.
 
-[![Version](https://img.shields.io/badge/version-3.4-blue)]()
+[![Version](https://img.shields.io/badge/version-3b%20v0.4.0-blue)]()
 [![Python](https://img.shields.io/badge/python-3.11+-green)]()
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
-[![Accuracy](https://img.shields.io/badge/benchmark-85%25%2B-brightgreen)]()
+[![Status](https://img.shields.io/badge/status-phase%203b%20hardening-brightgreen)]()
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [What's New in v3.4](#whats-new-in-v34)
+- [What's New in v3b v0.4.0](#whats-new-in-v3b-v040)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Dynamic Detection Engine](#dynamic-detection-engine)
@@ -42,7 +42,7 @@
 
 ---
 
-## What's New in v3.4
+## What's New in v3b v0.4.0
 
 | Feature | Description |
 |---------|-------------|
@@ -53,7 +53,7 @@
 | **JS Bundle Pattern Detection** | Vite/Webpack hashed asset patterns (`/assets/name.8chars.js`) |
 | **SQLite Profile Cache** | 24-hour TTL caching prevents redundant probes per domain |
 | **50-Site Benchmark Suite** | Automated validation across static, server, react, vue, angular, svelte, antibot, and spa categories |
-| **Release v3.4.0** | Full release notes in `output/release_notes_v3.4.0.md` |
+| **Release v3b v0.4.0** | Full release notes in `Nexora application/output/release_notes_v3b_v0.4.0.md` |
 
 ---
 
@@ -200,7 +200,7 @@ NEXUS AURORA/
 │   │   ├── real_site_benchmark_phase3.py   ★ 50-site benchmark
 │   │   ├── real_site_test_phase3.py        ★ Quick validation
 │   │   └── test_phase3_*.py
-│   └── release_notes_v3.4.0.md
+│   └── release_notes_v3b_v0.4.0.md
 ├── data/
 │   └── test_profiles.db           SQLite site profile cache
 └── Project Tools/                 Specs and roadmaps

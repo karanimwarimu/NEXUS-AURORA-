@@ -21,6 +21,7 @@ Debug
   scrapy crawl nexora -a urls="..." -a strategy="whole-website" --loglevel=INFO
 """
 
+import ipaddress
 import logging
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -37,7 +38,7 @@ logger = logging.getLogger("nexora.spider")
 STRATEGY_MAP = {
     "single-page":      {"depth": 0, "mode": "single-page", "auto_sitemap": False, "domain_lock": False},
     "linked-pages":     {"depth": 1, "mode": "multi-page",  "auto_sitemap": False, "domain_lock": False},
-    "whole-website":    {"depth": 3, "mode": "auto",        "auto_sitemap": True,  "domain_lock": False},
+    "whole-website":    {"depth": 3, "mode": "auto",        "auto_sitemap": True,  "domain_lock": True},
     "everything":       {"depth": 5, "mode": "multi-page",  "auto_sitemap": False, "domain_lock": True},
 }
 
@@ -54,6 +55,40 @@ class NexoraSpider(scrapy.Spider):
     name = "nexora"
 
     handle_httpstatus_list = [301, 302]
+
+    @staticmethod
+    def _is_private_or_local_host(hostname: str) -> bool:
+        if not hostname:
+            return True
+
+        host = hostname.strip().lower()
+        if host in {"localhost", "localhost.localdomain"} or host.endswith(".local"):
+            return True
+
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return False
+
+        return (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        )
+
+    def _is_allowed_url(self, url: str) -> bool:
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"}:
+            return False
+
+        hostname = parsed.hostname or ""
+        if not hostname:
+            return False
+
+        return not self._is_private_or_local_host(hostname)
 
     # ------------------------------------------------------------------ #
     # Init                                                                 #
@@ -78,6 +113,7 @@ class NexoraSpider(scrapy.Spider):
 
         # Resolve strategy
         self._resolve_strategy(sitemap)
+        self._update_allowed_domains()
 
         logger.info("Mode      : %s", self.mode)
         logger.info("Strategy  : %s", self.strategy_name)
@@ -85,6 +121,7 @@ class NexoraSpider(scrapy.Spider):
         logger.info("Depth     : %s", self.max_depth)
         logger.info("Max pages : %s", self.max_pages)
         logger.info("Domain lock: %s", self.domain_lock)
+        logger.info("Allowed domains: %s", self.allowed_domains)
         if self.sitemap_url:
             logger.info("Sitemap   : %s", self.sitemap_url)
 
@@ -128,6 +165,22 @@ class NexoraSpider(scrapy.Spider):
         self.domain_lock = False
         self.sitemap_url = ""
 
+    def _update_allowed_domains(self):
+        """Maintain allowed_domains from seed URL(s) and sitemap URL(s)."""
+        domains = set()
+        for url in self.seeds:
+            host = urlparse(url).hostname
+            if host:
+                domains.add(host)
+        if getattr(self, "sitemap_url", None):
+            host = urlparse(self.sitemap_url).hostname
+            if host:
+                domains.add(host)
+
+        self.allowed_domains = sorted(domains)
+        if not self.allowed_domains:
+            self.allowed_domains = []
+
     # ------------------------------------------------------------------ #
     # start() — Scrapy 2.16+ entry point                                  #
     # ------------------------------------------------------------------ #
@@ -145,6 +198,7 @@ class NexoraSpider(scrapy.Spider):
             if discovered:
                 self.mode = "sitemap"
                 self.sitemap_url = discovered[0]
+                self._update_allowed_domains()
                 logger.info("🗺️  Auto-detected sitemap — switching to sitemap mode")
             else:
                 self.mode = "multi-page"
@@ -152,6 +206,9 @@ class NexoraSpider(scrapy.Spider):
 
         # ── Sitemap mode ──────────────────────────────────────────────────
         if self.mode == "sitemap":
+            if not self._is_allowed_url(self.sitemap_url):
+                logger.warning("[start] skipping disallowed sitemap URL: %s", self.sitemap_url)
+                return
             logger.debug("[start] dispatching sitemap fetch → %s", self.sitemap_url)
             yield scrapy.Request(
                 self.sitemap_url,
@@ -165,6 +222,9 @@ class NexoraSpider(scrapy.Spider):
         # ── Single / Multi-page mode ────────────────────────────────────
         elif self.mode in ("single-page", "multi-page"):
             for url in self.seeds:
+                if not self._is_allowed_url(url):
+                    logger.warning("[start] skipping disallowed seed URL: %s", url)
+                    continue
                 logger.debug("[start] dispatching seed → %s", url)
                 yield scrapy.Request(
                     url,
@@ -228,50 +288,107 @@ class NexoraSpider(scrapy.Spider):
                 )
             return
 
-        # Leaf urlset — extract page URLs
-        page_urls = sel.xpath(
-            "//*[local-name()='url']/*[local-name()='loc']/text()"
-        ).getall()
+        # Leaf urlset — extract page URLs with optional sitemap metadata
+        # Using parsel Selector with local-name() XPath for namespace-agnostic extraction
+        url_nodes = sel.xpath("//*[local-name()='url']")
         logger.info("[sitemap-leaf] %d URLs to crawl from %s",
-                    len(page_urls), response.url)
+                    len(url_nodes), response.url)
 
-        # Safety cap for sitemap mode
-        if len(page_urls) > self.max_pages:
-            logger.warning(
-                "[sitemap] %d URLs found, capping to max_pages=%d",
-                len(page_urls), self.max_pages,
-            )
-            page_urls = page_urls[:self.max_pages]
+        if not url_nodes:
+            # Fallback: direct text extraction if node-level parsing fails
+            page_urls = sel.xpath(
+                "//*[local-name()='url']/*[local-name()='loc']/text()"
+            ).getall()
+            for url in page_urls[:self.max_pages]:
+                url = url.strip()
+                if not self._is_allowed_url(url):
+                    logger.debug("[sitemap] skipping disallowed fallback URL: %s", url)
+                    continue
+                logger.debug("[sitemap-leaf] → %s", url)
+                yield scrapy.Request(
+                    url,
+                    callback=self.parse_page,
+                    errback=self.on_error,
+                    meta={"depth": 0, "from_sitemap": True},
+                )
+            logger.warning("[sitemap] extracted URLs via fallback — no metadata available")
+            return
 
-        for url in page_urls:
-            logger.debug("[sitemap-leaf] → %s", url.strip())
-            yield scrapy.Request(
-                url.strip(),
-                callback=self.parse_page,
-                errback=self.on_error,
-                meta={"depth": 0},
-            )
+        entries = []
+        for node in url_nodes:
+            loc = node.xpath("*[local-name()='loc']/text()").get("")
+            if not loc:
+                continue
+            loc = loc.strip()
+            if not self._is_allowed_url(loc):
+                logger.debug("[sitemap] skipping disallowed URL: %s", loc)
+                continue
 
-        if not sub_sitemaps and not page_urls:
+            # Extract optional sitemap metadata
+            meta = {
+                "depth": 0,
+                "from_sitemap": True,
+            }
+
+            lastmod = node.xpath("*[local-name()='lastmod']/text()").get("")
+            if lastmod:
+                meta["sitemap_lastmod"] = lastmod.strip()
+
+            priority = node.xpath("*[local-name()='priority']/text()").get("")
+            if priority:
+                meta["sitemap_priority"] = priority.strip()
+
+            changefreq = node.xpath("*[local-name()='changefreq']/text()").get("")
+            if changefreq:
+                meta["sitemap_changefreq"] = changefreq.strip()
+
+            entries.append((loc.strip(), meta))
+
+        if not entries:
             logger.warning("[sitemap] no URLs found in %s — body preview: %s",
                            response.url, response.text[:200])
+            return
+
+        # Safety cap
+        if len(entries) > self.max_pages:
+            logger.warning(
+                "[sitemap] %d URLs found, capping to max_pages=%d",
+                len(entries), self.max_pages,
+            )
+            entries = entries[:self.max_pages]
+
+        for url, meta in entries:
+            logger.debug("[sitemap-leaf] → %s (lastmod=%s, priority=%s, changefreq=%s)",
+                         url, meta.get("sitemap_lastmod", "—"),
+                         meta.get("sitemap_priority", "—"),
+                         meta.get("sitemap_changefreq", "—"))
+            yield scrapy.Request(
+                url,
+                callback=self.parse_page,
+                errback=self.on_error,
+                meta=meta,
+            )
+
+        # Note: no "page_urls" check needed here — the node-based parsing above
+        # already handles the case where no URLs were found
 
     # ------------------------------------------------------------------ #
     # Page parsing                                                         #
     # ------------------------------------------------------------------ #
     def parse_page(self, response):
         current_depth = response.meta.get("depth", 0)
-        domain = urlparse(response.url).netloc
-        seed_domain = urlparse(self.seeds[0]).netloc if self.seeds else domain
+        domain = urlparse(response.url).hostname or ""
+        seed_domain = urlparse(self.seeds[0]).hostname if self.seeds else domain
 
         logger.debug("[page] depth=%d status=%d → %s",
                      current_depth, response.status, response.url)
 
-        # Safety cap
-        self.pages_crawled += 1
-        if self.pages_crawled > self.max_pages:
-            logger.warning("[page] Max pages cap (%d) reached — stopping.", self.max_pages)
+        # Safety cap: accept pages only until max_pages is reached, then stop.
+        if self.pages_crawled >= self.max_pages:
+            logger.warning("[page] Max pages cap (%d) reached — rejecting %s", self.max_pages, response.url)
             return
+
+        self.pages_crawled += 1
 
         # Detect if Playwright was used by checking request meta
         # DynamicDetectionMiddleware sets playwright=True if rendering was needed
@@ -287,14 +404,22 @@ class NexoraSpider(scrapy.Spider):
             playwright_used=pw_used,
         )
 
+        if self.pages_crawled >= self.max_pages:
+            logger.debug("[page] max_pages limit reached; not following links from %s", response.url)
+            return
+
         # Follow internal links in multi-page mode
         if self.mode == "multi-page" and current_depth < self.max_depth:
             followed = 0
             for href in response.css("a::attr(href)").getall():
                 abs_url = response.urljoin(href)
-                link_domain = urlparse(abs_url).netloc
+                if not self._is_allowed_url(abs_url):
+                    logger.debug("[page] skipping disallowed link: %s", abs_url)
+                    continue
+                parsed = urlparse(abs_url)
+                link_domain = parsed.hostname or ""
 
-                # Domain lock for "everything connected" strategy
+                # Domain lock for "everything connected" and "whole-website" strategies
                 if self.domain_lock and link_domain != seed_domain:
                     continue
 

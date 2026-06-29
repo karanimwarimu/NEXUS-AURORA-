@@ -92,14 +92,17 @@ DOWNLOADER_MIDDLEWARES = {
     "scrapy.downloadermiddlewares.useragent.UserAgentMiddleware": None,
     # Rotating User-Agent
     "nexora_crawler.middlewares.NexoraUserAgentMiddleware": 50,
-    # Content-type guard — rejects PDFs, images, XML before they hit the pipeline
+    # Content-type guard — rejects non-HTML responses, blocks URL patterns
     "nexora_crawler.middlewares.ContentTypeFilterMiddleware": 510,
+    # Resource blocking — blocks images/fonts/analytics in Playwright pages (before PW handler)
+    "nexora_crawler.middlewares.playwright_resource_blocker.PlaywrightResourceBlocker": 541,
     # Dynamic detection — identifies JS-heavy pages BEFORE Playwright handler (priority < 543)
     "nexora_crawler.middlewares.dynamic_detection.DynamicDetectionMiddleware": 542,
     # Playwright cleanup — closes pages to prevent memory leaks
     "nexora_crawler.middlewares.playwright_cleanup.PlaywrightCleanupMiddleware": 550,
-    # Exponential backoff — TODO Phase 4
-    # "nexora_crawler.middlewares.ExponentialBackoffMiddleware": 700,
+    # Exponential backoff — retries with 1s → 2s → 4s → 8s delay for 429/503/408
+    # (Import is from the middleware module file, not middlewares/__init__.py)
+    "nexora_crawler.middlewares.exponential_backoff.ExponentialBackoffMiddleware": 700,
     # Proxy rotation — TODO Phase 5
     # "nexora_crawler.middlewares.ProxyRotationMiddleware": 800,
 }

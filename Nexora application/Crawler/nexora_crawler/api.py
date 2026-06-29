@@ -32,7 +32,7 @@ from typing import Literal
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
 
@@ -48,6 +48,7 @@ import nexora_crawler.settings  # noqa: F401
 # ── Logging ────────────────────────────────────────────────────────────────
 # Avoid duplicate handlers when Scrapy/uvicorn configure logging.
 log = logging.getLogger("nexora.api")
+log.propagate = False  # Prevent duplicate log entries from root logger
 if not log.handlers:
     handler = logging.StreamHandler()
     formatter = logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
@@ -70,14 +71,15 @@ class CrawlRequest(BaseModel):
     ] = Field(default="single-page", description="Crawl depth strategy")
     max_pages: int = Field(default=1000, ge=1, le=50000, description="Safety cap on pages")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "url": "https://www.bbc.com",
                 "strategy": "whole-website",
                 "max_pages": 500,
             }
         }
+    )
 
 
 class CrawlResponse(BaseModel):
@@ -232,7 +234,7 @@ async def _run_crawl(job_id: str, url: str, strategy: str, max_pages: int):
 STRATEGY_MAP = {
     "single-page":   {"depth": 0, "mode": "single-page", "auto_sitemap": False, "domain_lock": False},
     "linked-pages":  {"depth": 1, "mode": "multi-page",  "auto_sitemap": False, "domain_lock": False},
-    "whole-website": {"depth": 3, "mode": "auto",        "auto_sitemap": True,  "domain_lock": False},
+    "whole-website": {"depth": 3, "mode": "auto",        "auto_sitemap": True,  "domain_lock": True},
     "everything":    {"depth": 5, "mode": "multi-page",  "auto_sitemap": False, "domain_lock": True},
 }
 

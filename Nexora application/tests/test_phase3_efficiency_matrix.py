@@ -104,9 +104,9 @@ async def test_phase3_efficiency_matrix_real_sites(tmp_path):
         EfficiencyCase(
             category="B-Dynamic",
             case_id="B1",
-            name="react.dev (JS SPA single-page)",
+            name="react.dev (JS SPA single-page — needs Playwright for full hydration)",
             url="https://react.dev",
-            expected={"expect_playwright": False},
+            expected={"expect_playwright": True},
         ),
 
 
@@ -478,14 +478,28 @@ def detect_anti_bot_from_probe(html: str, status_code: int) -> bool:
             if p.search(html):
                 return True
 
-    # 2) stealth 200 patterns
+    # 2) stealth 200 patterns (synced with middleware v3.4b expanded)
     if status_code == 200:
-        if re.search(r"/cdn-cgi/challenge|/_cf_chl/", html, re.I):
+        # Cloudflare challenge script paths
+        if re.search(r"/cdn-cgi/challenge|/_cf_chl/|/cdn-cgi/scripts/", html, re.I):
             return True
-        if re.search(r"challenge-platform", html, re.I):
+        # Cloudflare challenge platform identifiers
+        if re.search(r"challenge-platform|_cf_chl_opt|cf_chl_proto|cf_chl_opt", html, re.I):
             return True
-        if re.search(r"captcha-delivery|hcaptcha\\.com/1/api\\.js", html, re.I):
+        if re.search(r"window\._cf_chl_opt|cf\.challenge|turnstile\.render", html, re.I):
             return True
+        # DataDome/hCaptcha delivery on 200
+        if re.search(r"captcha-delivery|hcaptcha\.com/1/api\.js|hcaptcha\.com/1/\"", html, re.I):
+            return True
+        if re.search(r"datadome\.co|ddg\d{1,3}\.\w+\.js|/ddg\b", html, re.I):
+            return True
+        # Generic challenge page titles on 200
+        if re.search(r"<title>[^<]*(?:checking your browser|just a moment|verifying you are human|verifying|security check|attention required)[^<]*</title>", html, re.I):
+            return True
+        # Short body (< 500 bytes) on 200 + any anti-bot keyword
+        if len(html) < 500:
+            if re.search(r"cf_|turnstile|challenge|captcha|datadome|_abck|akamai|bot.?manager|blocked", html, re.I):
+                return True
 
     return False
 
@@ -508,8 +522,16 @@ def should_use_playwright_from_analysis(a: ProbeAnalysis) -> Tuple[bool, str]:
 
     # 0) SSR guard (runs before any Playwright-triggering signals)
     # If Next.js or "SSR-like" large pre-render exists, avoid PW.
-    if a.frameworks and "next.js" in a.frameworks and a.body_length > 50000:
-        return False, "Next.js SSR guard — large static render"
+    # Synced with middleware logic v3.4b: only skip PW if site is genuinely SSG
+    # (no SPA mount, no "requires JS" noscript, low script ratio)
+    if a.frameworks and "next.js" in a.frameworks:
+        # Next.js SSR guard — only skip PW if ALL conditions met:
+        # 1. Body is large (> 10000 chars = meaningful SSG content)
+        # 2. No SPA mount point (not a client-shell app)
+        # 3. No "requires JavaScript" noscript tag
+        # 4. Script ratio is low (< 0.05 = mostly static content)
+        if a.body_length > 10000 and not a.spa_mount_detected and not a.noscript_requires_js and a.script_ratio < 0.05:
+            return False, "Next.js SSR guard — SSG content (large body, no SPA mount, low script ratio)"
     if a.modern_bundle_pattern and a.body_length > 50000 and a.script_ratio < 0.05:
         return False, "SSR-like guard (modern bundle + large body + low script ratio)"
 
@@ -522,7 +544,8 @@ def should_use_playwright_from_analysis(a: ProbeAnalysis) -> Tuple[bool, str]:
         return True, f"JS framework detected: {', '.join(a.frameworks)}"
 
     # 3) SPA mount points (only if some scripts exist)
-    if a.spa_mount_detected and a.script_ratio > 0.02:
+    # Threshold lowered to 0.01 to match middleware v3.4b
+    if a.spa_mount_detected and a.script_ratio > 0.01:
         return True, "SPA mount point detected"
 
     # 4) modern bundle patterns

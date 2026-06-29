@@ -1,26 +1,49 @@
-#ignore all in output
-output/*
-
-
-#ignore all in output in the nexora application folder 
-Nexora application/output/*
-
-#ignore all in output in the nexora application folder
-Nexora application/Crawler/nexora_crawler/output/*
-
-#ignore all in the nexora application folder .scrapy folder
-Nexora application/Crawler/nexora_crawler/.scrapy/*
-
-
-# Scrapy
-.scrapy/
-
-# Python
-__pycache__/
-*.pyc
-
-# scrapy
-**/.scrapy/
-
-#scrapy
+# Ignore generated output and cache locations
+output/
 **/output/
+**/.scrapy/
+**/.httpcache/
+**/.blackbox/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/coverage/
+**/*.pyc
+**/*.pyo
+**/*.log
+**/*.tmp
+**/*.temp
+**/*.cache
+**/.DS_Store
+**/Thumbs.db
+
+# Project-specific generated artifacts
+# (Keep repos lean: generated crawls + exports + benchmark artifacts)
+Nexora application/output/
+Nexora application/Crawler/nexora_crawler/output/
+Nexora application/Crawler/nexora_crawler/.scrapy/
+
+# Heavy/generated outputs (tightening)
+Nexora application/output/pages/
+Nexora application/output/audit/*.json
+Nexora application/output/audit/*.csv
+Nexora application/output/audit/**/*.json
+Nexora application/output/audit/**/*.csv
+Nexora application/output/audit/phase3_efficiency_matrix_*.json
+Nexora application/output/audit/phase3_live_test_results.json
+Nexora application/output/audit/*_efficiency_matrix_*.json
+Nexora application/output/audit/*_live_test_results*.json
+Nexora application/output/audit/*.html
+Nexora application/output/pages/*.json
+Nexora application/output/pages/*.csv
+
+Nexora application/tests/_logs/
+Nexora application/tests/_reports/
+Nexora application/tests/.pytest_cache/
+
+# Keep local environment and credentials out of version control
+.env
+.env.*
+*.local

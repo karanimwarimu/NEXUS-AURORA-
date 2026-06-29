@@ -14,6 +14,7 @@ Pipeline order:
 
 
 import os
+import re
 import sys
 import csv
 import json
@@ -196,14 +197,21 @@ class NexoraExportPipeline(_BasePipeline):
             return item
 
         url = item.get("url", "unknown")
+        if "screenshot_path" not in item:
+            item["screenshot_path"] = ""
+        if "render_time_ms" not in item:
+            item["render_time_ms"] = 0.0
+
         parsed = urlparse(url)
         domain = parsed.netloc.replace(".", "_")
-        path_slug = parsed.path.strip("/").replace("/", "_")[:40] or "root"
+        path_slug = re.sub(r"[^A-Za-z0-9]+", "_", parsed.path).strip("_")[:40] or "root"
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         base_name = f"{domain}__{path_slug}__{ts}"
 
         # Convert item to plain dict for serialization
         data = dict(item)
+
+        os.makedirs(self.output_dir, exist_ok=True)
 
         # JSON export
         json_path = os.path.join(self.output_dir, f"{base_name}.json")
@@ -247,6 +255,7 @@ class NexoraDatasetPipeline(_BasePipeline):
         dataset_dir = os.path.join(_PROJECT_ROOT, "output")
         os.makedirs(dataset_dir, exist_ok=True)
         self.dataset_path = os.path.join(dataset_dir, "master_dataset.csv")
+        self._seen_urls = set()
         write_header = not os.path.exists(self.dataset_path)
         self.f = open(self.dataset_path, "a", newline="", encoding="utf-8")
         self.writer = csv.DictWriter(self.f, fieldnames=self.MASTER_FIELDS)
@@ -264,6 +273,16 @@ class NexoraDatasetPipeline(_BasePipeline):
         """Scrapy 2.16+ async signature — no spider argument."""
         if item.get("__skip"):
             return item
+
+        url = item.get("url", "")
+        fingerprint = item.get("fingerprint") or ""
+        seen_keys = getattr(self, "_seen_keys", set())
+        dedup_key = (url, fingerprint) if fingerprint else url
+        if dedup_key in seen_keys:
+            log.info("Skipping duplicate dataset row for %s", url)
+            return item
+        seen_keys.add(dedup_key)
+        self._seen_keys = seen_keys
 
         styles = item.get("styles", {}) or {}
         if not isinstance(styles, dict):
