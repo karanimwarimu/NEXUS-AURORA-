@@ -18,15 +18,19 @@ class UnifiedSchemaEnricher:
 
     def __init__(self):
         self.stats = {"items_enriched": 0, "defaults_applied": 0}
+        self.crawler = None
 
     @classmethod
     def from_crawler(cls, crawler):
-        return cls()
+        obj = cls()
+        obj.crawler = crawler
+        return obj
 
-    async def process_item(self, item, spider):
+    async def process_item(self, item):
+        spider = getattr(self.crawler, 'spider', None)
         # Ensure crawl_id
         if not item.get("crawl_id"):
-            item["crawl_id"] = getattr(spider, "crawl_id", "")
+            item["crawl_id"] = getattr(spider, "crawl_id", "") if spider else ""
 
         # Ensure timestamp
         if not item.get("timestamp"):
@@ -93,5 +97,7 @@ class UnifiedSchemaEnricher:
             return "article"
         return "unknown"
 
-    def close_spider(self, spider):
-        logger.info("[SchemaEnricher] Stats: %s", self.stats)
+    def close_spider(self):
+        spider = getattr(self.crawler, 'spider', None)
+        spider_name = getattr(spider, 'name', None) if spider else 'unknown'
+        logger.info("[SchemaEnricher] Stats for %s: %s", spider_name, self.stats)

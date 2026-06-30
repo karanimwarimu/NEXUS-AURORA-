@@ -32,21 +32,26 @@ class ParquetExportPipeline:
         self.output_dir = self.settings.get('NEXORA_PARQUET_OUTPUT', './output/parquet')
 
         self._buffer = []
-        self._buffer_size = 100
+        self._buffer_size = 20  # Flush every 20 items for better responsiveness
         self._total_rows = 0
         self._file_counter = 0
+        self._spider_name = "nexora"  # default
 
     @classmethod
     def from_crawler(cls, crawler):
-        return cls(crawler)
+        obj = cls(crawler)
+        obj.crawler = crawler
+        return obj
 
-    def open_spider(self, spider):
+    def open_spider(self):
+        spider = getattr(self.crawler, 'spider', None)
+        self._spider_name = getattr(spider, 'name', 'nexora') if spider else 'nexora'
         if not self.enabled:
             return
         os.makedirs(self.output_dir, exist_ok=True)
         logger.info("[Parquet] Export enabled — dir: %s", self.output_dir)
 
-    async def process_item(self, item, spider):
+    async def process_item(self, item):
         if not self.enabled:
             return item
 
@@ -54,15 +59,15 @@ class ParquetExportPipeline:
         self._buffer.append(row)
 
         if len(self._buffer) >= self._buffer_size:
-            self._flush_buffer(spider)
+            self._flush_buffer()
 
         return item
 
-    def close_spider(self, spider):
+    def close_spider(self):
         if not self.enabled:
             return
         if self._buffer:
-            self._flush_buffer(spider)
+            self._flush_buffer()
         logger.info("[Parquet] Total rows exported: %d", self._total_rows)
 
     def _item_to_parquet_row(self, item: dict) -> dict:
@@ -81,14 +86,14 @@ class ParquetExportPipeline:
 
         return row
 
-    def _flush_buffer(self, spider):
+    def _flush_buffer(self):
         if not self._buffer:
             return
 
         try:
             df = pd.DataFrame(self._buffer)
             timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-            filename = f"{spider.name}_{timestamp}_{self._file_counter:04d}.parquet"
+            filename = f"{self._spider_name}_{timestamp}_{self._file_counter:04d}.parquet"
             filepath = os.path.join(self.output_dir, filename)
 
             table = pa.Table.from_pandas(df)
@@ -108,9 +113,8 @@ class ParquetExportPipeline:
 
         except Exception as exc:
             logger.error("[Parquet] Flush failed: %s", exc)
-            
-            
-            
+
+
 """
 Spider Yields:
 ┌─────────────────────────────────────────┐

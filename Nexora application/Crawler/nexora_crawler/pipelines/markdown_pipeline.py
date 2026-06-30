@@ -27,10 +27,13 @@ class MarkdownExtractionPipeline:
             "avg_token_reduction": 0.0,
         }
         self.asset_extractor = MultimodalAssetExtractor()
+        self.crawler = None
 
     @classmethod
     def from_crawler(cls, crawler):
-        return cls()
+        obj = cls()
+        obj.crawler = crawler
+        return obj
 
     def _extract_multimodal(self, item, html):
         """Extract image/video assets and set item fields."""
@@ -41,7 +44,8 @@ class MarkdownExtractionPipeline:
         item["total_videos"] = assets["total_videos"]
         item["has_hero_image"] = assets["has_hero_image"]
 
-    async def process_item(self, item, spider):
+    async def process_item(self, item):
+        spider = getattr(self.crawler, 'spider', None)
         html = item.get("html", "")
         if not html:
             item["markdown"] = ""
@@ -99,5 +103,7 @@ class MarkdownExtractionPipeline:
 
         return item
 
-    def close_spider(self, spider):
-        logger.info("[MarkdownPipeline] Stats: %s", self.stats)
+    def close_spider(self):
+        spider = getattr(self.crawler, 'spider', None)
+        spider_name = getattr(spider, 'name', None) if spider else 'unknown'
+        logger.info("[MarkdownPipeline] Stats for %s: %s", spider_name, self.stats)

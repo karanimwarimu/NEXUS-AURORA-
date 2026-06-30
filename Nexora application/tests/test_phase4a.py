@@ -79,7 +79,7 @@ class TestMarkdownPipeline:
         pipeline = MarkdownExtractionPipeline()
         item = NexoraPageItem({"html": article_html, "url": "https://example.com/article"})
 
-        result = await pipeline.process_item(item, mock_spider)
+        result = await pipeline.process_item(item)
 
         assert result.get("markdown"), "markdown field should be populated"
         assert len(result["markdown"]) > 50, "markdown should contain substantial text"
@@ -95,7 +95,7 @@ class TestMarkdownPipeline:
         pipeline = MarkdownExtractionPipeline()
         item = NexoraPageItem({"html": article_html, "url": "https://example.com/article"})
 
-        result = await pipeline.process_item(item, mock_spider)
+        result = await pipeline.process_item(item)
         markdown = result.get("markdown", "").lower()
 
         # Boilerplate tokens that should be removed by Trafilatura
@@ -121,7 +121,7 @@ class TestMarkdownPipeline:
         pipeline = MarkdownExtractionPipeline()
         item = NexoraPageItem({"html": article_html, "url": "https://example.com/article"})
 
-        result = await pipeline.process_item(item, mock_spider)
+        result = await pipeline.process_item(item)
         markdown = result.get("markdown", "")
 
         # Should contain pipe-delimited table structure
@@ -138,7 +138,7 @@ class TestMarkdownPipeline:
         pipeline = MarkdownExtractionPipeline()
         item = NexoraPageItem({"html": "", "url": "https://example.com"})
 
-        result = await pipeline.process_item(item, mock_spider)
+        result = await pipeline.process_item(item)
 
         assert result.get("markdown") == "", "empty HTML should yield empty markdown"
         assert result.get("extraction_method") == "no_html"
@@ -153,7 +153,7 @@ class TestMarkdownPipeline:
             "clean_text": "Fallback text content here",
         })
 
-        result = await pipeline.process_item(item, mock_spider)
+        result = await pipeline.process_item(item)
 
         # Trafilatura may produce very short markdown or fall through to clean_text
         assert result.get("markdown") is not None, "markdown should never be None"
@@ -254,7 +254,7 @@ class TestSchemaEnricher:
             "html": "<html><body><p>hello</p></body></html>",
         })
 
-        result = await enricher.process_item(item, mock_spider)
+        result = await enricher.process_item(item)
 
         # These three dicts must always be present
         assert isinstance(result.get("entities"), dict), "entities must be a dict"
@@ -291,7 +291,7 @@ class TestSchemaEnricher:
                 "title": title,
                 "markdown": markdown,
             })
-            result = await enricher.process_item(item, mock_spider)
+            result = await enricher.process_item(item)
             assert result["website_type"] == expected, (
                 f"URL '{url}' should be '{expected}', got '{result['website_type']}'"
             )
@@ -301,15 +301,17 @@ class TestSchemaEnricher:
         """P4A-T11: Missing fields are populated with defaults, not omitted."""
         enricher = UnifiedSchemaEnricher()
         # Start with bare minimum item — no entities, style_analysis, quality_scores
+        # Note: crawl_id is now accessed via crawler.spider, but in tests we set it directly
         item = NexoraPageItem({
             "url": "https://example.com/page",
             "html": "<html><body><p>test</p></body></html>",
+            "crawl_id": "test-crawl-uuid-1234",  # Set directly since no crawler in test
         })
 
-        result = await enricher.process_item(item, mock_spider)
+        result = await enricher.process_item(item)
 
         # Must have timeline fields
-        assert result.get("crawl_id") == "test-crawl-uuid-1234", "crawl_id should be filled from spider"
+        assert result.get("crawl_id") == "test-crawl-uuid-1234", "crawl_id should be preserved"
         assert result.get("timestamp"), "timestamp should be auto-generated"
         assert result.get("domain") == "example.com", "domain should be extracted from URL"
 
@@ -358,8 +360,9 @@ class TestParquetExport:
         pipeline._buffer_size = 2  # Flush every 2 items for testing
         pipeline._total_rows = 0
         pipeline._file_counter = 0
+        pipeline._spider_name = "nexora"
 
-        pipeline.open_spider(mock_spider)
+        pipeline.open_spider()
 
         # Process 3 items
         for i in range(3):
@@ -373,9 +376,9 @@ class TestParquetExport:
                 "clean_text": f"Text {i}",
                 "html": f"<html><body>{i}</body></html>",
             })
-            await pipeline.process_item(item, mock_spider)
+            await pipeline.process_item(item)
 
-        pipeline.close_spider(mock_spider)
+        pipeline.close_spider()
 
         # Check parquet file exists
         parquet_files = list(Path(pipeline.output_dir).glob("*.parquet"))
@@ -404,7 +407,7 @@ class TestParquetExport:
             }.get(k, d),
         })()
 
-        crawler = type("Crawler", (), {"settings": settings})()
+        crawler = type("Crawler", (), {"settings": settings, "spider": type("Spider", (), {"name": "nexora"})()})()
 
         pipeline = ParquetExportPipeline.__new__(ParquetExportPipeline)
         pipeline.crawler = crawler
@@ -417,8 +420,9 @@ class TestParquetExport:
         pipeline._buffer_size = 100
         pipeline._total_rows = 0
         pipeline._file_counter = 0
+        pipeline._spider_name = "nexora"
 
-        pipeline.open_spider(mock_spider)
+        pipeline.open_spider()
 
         # Process 10 items with substantial content
         rows = []
@@ -439,9 +443,9 @@ class TestParquetExport:
             }
             rows.append(data)
             item = NexoraPageItem(data)
-            await pipeline.process_item(item, mock_spider)
+            await pipeline.process_item(item)
 
-        pipeline.close_spider(mock_spider)
+        pipeline.close_spider()
 
         # Get parquet file
         parquet_files = list(Path(pipeline.output_dir).glob("*.parquet"))
@@ -562,19 +566,23 @@ class TestRegression:
             "url": "https://example.com/article",
             "spider_name": "nexora",
             "depth": 0,
+            "crawl_id": "test-crawl-uuid-1234",  # Set directly since no crawler context
         })
 
         loop = asyncio.new_event_loop()
         try:
-            item = loop.run_until_complete(md_pipeline.process_item(item, mock_spider))
+            item = loop.run_until_complete(md_pipeline.process_item(item))
         finally:
             loop.close()
 
-        # Run Schema Enricher
+        # Run Schema Enricher (with mock crawler for spider access)
         enricher = UnifiedSchemaEnricher()
+        settings = type("Settings", (), {})()
+        crawler = type("Crawler", (), {"settings": settings, "spider": mock_spider})()
+        enricher.crawler = crawler
         loop = asyncio.new_event_loop()
         try:
-            item = loop.run_until_complete(enricher.process_item(item, mock_spider))
+            item = loop.run_until_complete(enricher.process_item(item))
         finally:
             loop.close()
 

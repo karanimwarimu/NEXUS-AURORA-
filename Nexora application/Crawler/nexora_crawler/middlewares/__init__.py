@@ -151,8 +151,8 @@ class NexoraSpiderMiddleware:
         async for x in result:
             yield x
 
-    def process_spider_exception(self, response, exception, spider):
-        """Scrapy spider exception handler — synchronous implementation."""
+    def process_spider_exception(self, response, exception):
+        """Scrapy spider exception handler — Scrapy 2.16+ no spider argument."""
         log.error("[spider-exception] %s — %s", response.url, exception)
         return None
 

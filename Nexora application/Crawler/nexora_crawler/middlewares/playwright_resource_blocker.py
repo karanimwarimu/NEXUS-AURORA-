@@ -76,8 +76,8 @@ class PlaywrightResourceBlocker:
     def from_crawler(cls, crawler):
         return cls(crawler)
 
-    async def process_request(self, request, spider):
-        """Add route interception to Playwright-bound requests."""
+    async def process_request(self, request):
+        """Add route interception to Playwright-bound requests. Scrapy 2.16+ no spider arg."""
         if not self.enabled:
             return None
 

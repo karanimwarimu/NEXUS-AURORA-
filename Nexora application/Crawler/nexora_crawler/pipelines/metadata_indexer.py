@@ -17,6 +17,7 @@ class MetadataIndexerPipeline:
     """
 
     def __init__(self, crawler):
+        self.crawler = crawler
         self.store = MetadataStore(
             db_path=crawler.settings.get('NEXORA_METADATA_DB', './data/nexora_metadata.db')
         )
@@ -24,9 +25,11 @@ class MetadataIndexerPipeline:
 
     @classmethod
     def from_crawler(cls, crawler):
-        return cls(crawler)
+        obj = cls(crawler)
+        obj.crawler = crawler
+        return obj
 
-    async def process_item(self, item, spider):
+    async def process_item(self, item):
         if item.get("__skip"):
             return item
 
@@ -37,7 +40,9 @@ class MetadataIndexerPipeline:
             self.stats["failed"] += 1
         return item
 
-    def close_spider(self, spider):
-        logger.info("[MetadataIndexer] Stats: %s", self.stats)
+    def close_spider(self):
+        spider = getattr(self.crawler, 'spider', None)
+        spider_name = getattr(spider, 'name', None) if spider else 'unknown'
+        logger.info("[MetadataIndexer] Stats for %s: %s", spider_name, self.stats)
         stats = self.store.get_stats()
         logger.info("[MetadataStore] DB stats: %s", stats)

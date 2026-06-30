@@ -208,7 +208,7 @@ class DynamicDetectionMiddleware:
                 logger.warning("[DynamicDetection] No event loop for client close")
 
     # CORE DECISION ENGINE
-    async def process_request(self, request, spider):
+    async def process_request(self, request):
 
         if not self.playwright_enabled:
             logger.debug("[DD] Playwright disabled — all requests go HTTP")
@@ -246,7 +246,7 @@ class DynamicDetectionMiddleware:
                 logger.debug("[DD] Cached profile stale — re-probing %s", domain)
                 profile = None  # Force re-probe
 
-        needs_js, reason = await self._probe_page(request.url, spider)
+        needs_js, reason = await self._probe_page(request.url)
         self._update_profile(domain, needs_js=needs_js)
         self._profile_cache_timestamps[domain] = time.time()
 
@@ -262,7 +262,7 @@ class DynamicDetectionMiddleware:
         return (time.time() - timestamp) < PROFILE_CACHE_TTL_SECONDS
 
     # STATIC PROBE LOGIC
-    async def _probe_page(self, url, spider):
+    async def _probe_page(self, url):
         """Probe a page via HTTP and decide if it needs Playwright.
 
         Returns: (needs_js: bool, reason: str)
