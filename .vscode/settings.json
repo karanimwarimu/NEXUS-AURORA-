@@ -1,7 +1,8 @@
 {
-    "python-envs.defaultEnvManager": "ms-python.python:conda",
-    "python-envs.defaultPackageManager": "ms-python.python:conda",
-    "python.analysis.extraPaths": [
-        "./Nexora application/Crawler"
-    ]
+  "terminal.integrated.profiles.windows": {
+    "Command Prompt": {
+      "path": "C:\\Windows\\System32\\cmd.exe"
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "Command Prompt"
 }

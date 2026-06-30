@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Test Article — Phase 4A Fixture</title>
+  <meta name="description" content="A test article with tables, images, videos, and boilerplate for Phase 4A testing.">
+  <meta property="og:title" content="Test Article">
+  <meta property="og:type" content="article">
+</head>
+<body>
+  <!-- Boilerplate — should be stripped by Trafilatura -->
+  <div class="cookie-banner">
+    <p>This website uses cookies to ensure you get the best experience.</p>
+    <a href="/cookie-policy">Learn more</a>
+  </div>
+  <nav class="navigation">
+    <ul>
+      <li><a href="/">Home</a></li>
+      <li><a href="/subscribe">Subscribe</a></li>
+      <li><a href="/about">About</a></li>
+    </ul>
+  </nav>
+
+  <!-- Main article content -->
+  <article>
+    <header>
+      <h1>Understanding Phase 4A Storage Architecture</h1>
+      <p class="byline">By Nexora Engineering Team</p>
+    </header>
+
+    <section>
+      <h2>Introduction</h2>
+      <p>Phase 4A introduces a unified storage pipeline that transforms raw HTML into clean, structured, multi-format outputs. This article explains the architecture and its components.</p>
+      <p>The pipeline converts raw HTML through several stages: Markdown extraction, multimodal asset isolation, schema enrichment, metadata indexing, and Parquet export.</p>
+    </section>
+
+    <section>
+      <h2>Supported Formats</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Format</th>
+            <th>Use Case</th>
+            <th>Compression</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Markdown</td>
+            <td>Human-readable, LLM context</td>
+            <td>None (text)</td>
+          </tr>
+          <tr>
+            <td>Parquet</td>
+            <td>ML pipelines, analytics</td>
+            <td>Snappy / Zstd</td>
+          </tr>
+          <tr>
+            <td>JSON</td>
+            <td>API integration, inspection</td>
+            <td>None</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Images</h2>
+      <figure class="hero">
+        <img src="https://example.com/images/hero-architecture.png" alt="Architecture Diagram" width="1200" height="800" loading="eager" srcset="https://example.com/images/hero-400w.png 400w, https://example.com/images/hero-800w.png 800w, https://example.com/images/hero-1200w.png 1200w">
+        <figcaption>Phase 4A overall architecture diagram.</figcaption>
+      </figure>
+      <figure>
+        <img src="https://example.com/images/chart.png" alt="Performance Chart" width="600" height="400" loading="lazy">
+        <figcaption>Performance benchmarks across pipeline stages.</figcaption>
+      </figure>
+      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="Pixel">
+    </section>
+
+    <section>
+      <h2>Video Demos</h2>
+      <video controls width="640" height="360">
+        <source src="https://example.com/videos/demo.mp4" type="video/mp4">
+        <source src="https://example.com/videos/demo.webm" type="video/webm">
+        Your browser does not support video.
+      </video>
+      <div class="embed">
+        <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" width="560" height="315" frameborder="0" allowfullscreen></iframe>
+      </div>
+      <div class="embed">
+        <iframe src="https://player.vimeo.com/video/123456789" width="560" height="315" frameborder="0"></iframe>
+      </div>
+    </section>
+
+    <section>
+      <h2>Conclusion</h2>
+      <p>The Phase 4A pipeline provides a robust foundation for all downstream AI and RAG workflows.</p>
+      <p>Subscribe to our newsletter for updates on Phase 4B — AI Enrichment and Chunking.</p>
+      <p>Follow our navigation guide to get started with the implementation.</p>
+    </section>
+  </article>
+
+  <!-- Footer boilerplate -->
+  <footer class="site-footer">
+    <p>&copy; 2026 Nexora. All rights reserved. | <a href="/privacy">Privacy Policy</a></p>
+    <p>Subscribe to our newsletter for updates.</p>
+  </footer>
+</body>
+</html>

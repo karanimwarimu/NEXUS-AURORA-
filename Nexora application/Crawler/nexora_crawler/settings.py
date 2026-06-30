@@ -5,6 +5,7 @@ Central configuration for the Scrapy crawling engine.
 
 Every value here is documented with WHY it exists.
 Phase 3 additions are clearly marked — uncomment when ready.
+Phase 4A: Added markdown, multimodal, schema enricher, metadata indexer, parquet pipelines.
 """
 
 from pathlib import Path
@@ -109,12 +110,27 @@ DOWNLOADER_MIDDLEWARES = {
 
 # ── Item Pipelines ────────────────────────────────────────────────────────────
 # Order matters: lower numbers run first.
-# 100  Extraction  → 150  Styles  → 200  Export  → 300  Dataset
+#
+# Complete Phase 1-4A pipeline chain:
+#   100  ExtractionPipeline          ← Phase 1-2: structured data extraction
+#   110  MarkdownExtractionPipeline  ← Phase 4A: HTML → clean Markdown + multimodal assets
+#   150  StylePipeline               ← Phase 2: visual design intelligence
+#   160  UnifiedSchemaEnricher       ← Phase 4A: enforce unified schema defaults
+#   165  MetadataIndexerPipeline     ← Phase 4A: persist to SQLite MetadataStore
+#   250  Phase 4B pipelines          ← future: AI enrichment, chunking, embedding
+#   450  ParquetExportPipeline       ← Phase 4A: compressed columnar export
+#   500  ExportPipeline              ← Phase 1: per-page JSON + CSV files
+#   600  DatasetPipeline             ← Phase 1: master dataset CSV
 ITEM_PIPELINES = {
     "nexora_crawler.pipelines.NexoraExtractionPipeline": 100,
-    "nexora_crawler.pipelines.NexoraStylePipeline":      150,  # style/theme
-    "nexora_crawler.pipelines.NexoraExportPipeline":     200,
-    "nexora_crawler.pipelines.NexoraDatasetPipeline":    300,
+    "nexora_crawler.pipelines.markdown_pipeline.MarkdownExtractionPipeline": 110,
+    "nexora_crawler.pipelines.NexoraStylePipeline": 150,
+    "nexora_crawler.pipelines.schema_enricher.UnifiedSchemaEnricher": 160,
+    "nexora_crawler.pipelines.metadata_indexer.MetadataIndexerPipeline": 165,
+    # Phase 4B pipelines at 250+
+    "nexora_crawler.pipelines.parquet_export.ParquetExportPipeline": 450,
+    "nexora_crawler.pipelines.NexoraExportPipeline": 500,
+    "nexora_crawler.pipelines.NexoraDatasetPipeline": 600,
 }
 
 # ── HTTP Cache (dev only — speeds up re-runs without re-fetching) ─────────────
@@ -176,3 +192,20 @@ if NEXORA_PLAYWRIGHT_ENABLED:
     DOWNLOADER_MIDDLEWARES.update({
         "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler": 543,
     })
+
+
+# ── Phase 4A: Markdown Pipeline Settings ──────────────────────────────────────
+NEXORA_MARKDOWN_ENABLED = True
+NEXORA_MARKDOWN_INCLUDE_COMMENTS = False
+NEXORA_MARKDOWN_INCLUDE_TABLES = True
+NEXORA_MARKDOWN_INCLUDE_LINKS = True
+NEXORA_MARKDOWN_DEDUPLICATE = True
+
+# ── Phase 4A: Parquet Export Settings ─────────────────────────────────────────
+NEXORA_PARQUET_ENABLED = True
+NEXORA_PARQUET_COMPRESSION = 'snappy'  # snappy | gzip | brotli | zstd
+NEXORA_PARQUET_ROW_GROUP_SIZE = 10000
+NEXORA_PARQUET_OUTPUT = './output/parquet'
+
+# ── Phase 4A: Metadata Store Settings ─────────────────────────────────────────
+NEXORA_METADATA_DB = './data/nexora_metadata.db'

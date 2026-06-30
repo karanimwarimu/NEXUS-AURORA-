@@ -1,21 +1,22 @@
-# NEXUS AURORA v3b v0.4.0
+# NEXUS AURORA v4.1.0
 
-> AI-powered website intelligence platform with static-first routing, browser-aware extraction, and hardened crawl safety for production-grade web intelligence workflows.
+> AI-powered website intelligence platform with static-first routing, browser-aware extraction, multi-format storage engine, and hardened crawl safety for production-grade web intelligence workflows.
 
-[![Version](https://img.shields.io/badge/version-3b%20v0.4.0-blue)]()
+[![Version](https://img.shields.io/badge/version-4.1.0-blue)]()
 [![Python](https://img.shields.io/badge/python-3.11+-green)]()
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
-[![Status](https://img.shields.io/badge/status-phase%203b%20hardening-brightgreen)]()
+[![Status](https://img.shields.io/badge/status-phase%204A%20storage-brightgreen)]()
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [What's New in v3b v0.4.0](#whats-new-in-v3b-v040)
+- [What's New in v4.1.0](#whats-new-in-v410)
 - [Features](#features)
 - [Architecture](#architecture)
-- [Dynamic Detection Engine](#dynamic-detection-engine)
+  - [Complete Pipeline Chain](#complete-pipeline-chain)
+  - [Dynamic Detection Engine](#dynamic-detection-engine)
 - [Project Structure](#project-structure)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -23,6 +24,7 @@
   - [Phase 2 — Scrapy Crawler](#phase-2--scrapy-crawler)
   - [Phase 2.6 — Interactive CLI & API](#phase-26--interactive-cli--api)
   - [Phase 3 — Dynamic Detection Middleware](#phase-3--dynamic-detection-middleware)
+  - [Phase 4A — Storage & Multi-Format Export](#phase-4a--storage--multi-format-export)
   - [Benchmark Suite](#benchmark-suite)
 - [Crawl Strategies](#crawl-strategies)
 - [Output Format](#output-format)
@@ -36,24 +38,25 @@
 
 ## Overview
 
-**NEXUS AURORA** (codename: **Nexora**) is a Python web intelligence pipeline with an intelligent **static-first routing engine**. It probes each URL via lightweight HTTP, decides if JavaScript rendering is needed using 8 detection signals, and routes accordingly — saving 150-300MB RAM per page for static sites while ensuring JS-heavy SPAs get full browser rendering.
+**NEXUS AURORA** (codename: **Nexora**) is a Python web intelligence pipeline with an intelligent **static-first routing engine** and a **multi-format storage infrastructure**. It probes each URL via lightweight HTTP, decides if JavaScript rendering is needed using 8 detection signals, routes accordingly — saving 150-300MB RAM per page for static sites — then transforms raw HTML into clean, structured, multi-format outputs for human analysts, ML pipelines, and RAG systems.
 
-> **Current Phase: 3.4** — Dynamic Detection Middleware with 85-90% accuracy on 50 real websites across 8 categories.
+> **Current Phase: 4A (v4.1.0)** — Storage & Multi-Format Ingestion Engine with Markdown extraction, multimodal asset isolation, unified schema enforcement, SQLite metadata indexing, and compressed Parquet export.
 
 ---
 
-## What's New in v3b v0.4.0
+## What's New in v4.1.0
 
 | Feature | Description |
 |---------|-------------|
-| **DynamicDetectionMiddleware** | Scrapy middleware (Priority 542) that auto-routes between static HTTP and Playwright JS rendering |
-| **8-Signal Decision Engine** | Framework markers, script ratio, text density, body length, anti-bot, SPA mount points, bundle patterns, error fallback |
-| **SPA Mount Point Detection** | Detects `<div id="root">`, `<div id="__next">`, `<div id="app">` etc. for framework-agnostic SPA detection |
-| **Anti-Bot Detection on HTTP 200** | Catches Cloudflare/DataDome stealth challenges that return 200 status |
-| **JS Bundle Pattern Detection** | Vite/Webpack hashed asset patterns (`/assets/name.8chars.js`) |
-| **SQLite Profile Cache** | 24-hour TTL caching prevents redundant probes per domain |
-| **50-Site Benchmark Suite** | Automated validation across static, server, react, vue, angular, svelte, antibot, and spa categories |
-| **Release v3b v0.4.0** | Full release notes in `Nexora application/output/release_notes_v3b_v0.4.0.md` |
+| **MarkdownExtractionPipeline** | Scrapy pipeline (Priority 110) converting raw HTML to clean, LLM-ready Markdown via Trafilatura with >50% token reduction |
+| **MultimodalAssetExtractor** | Isolates images and videos from HTML with structured metadata (src, alt, dimensions, hero detection, embed platform) |
+| **UnifiedSchemaEnricher** | Scrapy pipeline (Priority 160) enforcing the NexoraRecord schema with defaults, website_type classification (e-commerce, blog, docs, article, unknown) |
+| **MetadataIndexerPipeline** | Scrapy pipeline (Priority 165) persisting items to SQLite MetadataStore |
+| **ParquetExportPipeline** | Scrapy pipeline (Priority 450) buffering and flushing compressed Apache Parquet files (snappy/gzip/zstd/brotli) |
+| **SQLite MetadataStore** | Relational storage with `pages` and `crawl_jobs` tables, indexed by domain, crawl_id, website_type, timestamp, language |
+| **Unified Schema Dataclass** | `NexoraRecord` — canonical data shape with typed sub-classes (EntityExtraction, QualityScores, StyleAnalysis) |
+| **Phase 4A Test Suite** | 18 automated tests covering all 12 specification test cases (100% pass rate) |
+| **One Crawl → Multiple Formats** | Raw HTML → Markdown + JSON/CSV + Parquet + SQLite from a single crawl job |
 
 ---
 
@@ -81,53 +84,71 @@
 - **SPA mount point detection** — Catches framework-agnostic SPA shells
 - **24-hour profile cache** — SQLite-backed, TTL-based re-probe
 
+### Phase 4A — Multi-Format Storage Engine (NEW)
+- **Markdown extraction** — HTML → clean Markdown with >50% token reduction
+- **Multimodal asset isolation** — Structured metadata for images and videos (no binary download)
+- **Unified schema** — Every record has entities, style_analysis, quality_scores with guaranteed defaults
+- **Website classification** — Automatic e-commerce, blog, documentation, article, or unknown detection
+- **SQLite metadata store** — Fast relational storage indexed by domain, crawl_id, website_type, language
+- **Parquet export** — Columnar, compressed storage for ML pipelines (snappy compression, < 30% of equivalent JSON)
+- **One crawl → multiple formats** — Markdown + JSON + CSV + Parquet + SQLite from a single pass
+
 ### Benchmarking
 - **50-site benchmark** across 8 categories with confusion matrix
 - **Per-category accuracy metrics**
-- **Quick validation script** for rapid testing
+- **18-test Phase 4A suite** covering all storage components
 
 ---
 
 ## Architecture
 
-### High-Level Pipeline
+### Complete Pipeline Chain
 
 ```
-                        ┌─────────────────┐
-                        │  Incoming URL    │
-                        └────────┬────────┘
-                                 │
-                                 ▼
-              ┌──────────────────────────────────┐
-              │   DYNAMIC DETECTION MIDDLEWARE    │
-              │   (Priority 542 — Scrapy)         │
-              │                                    │
-              │   ┌──────────┐  ┌──────────┐     │
-              │   │ Cache    │─▶│ Probe    │     │
-              │   │ Check    │  │ (httpx)  │     │
-              │   └──────────┘  └────┬─────┘     │
-              │                      ▼            │
-              │              ┌──────────────┐    │
-              │              │ 8-Signal     │    │
-              │              │ Decision     │    │
-              │              └──────┬───────┘    │
-              └─────────────────────┼────────────┘
-                                    │
-                    ┌───────────────┴───────────────┐
-                    │                               │
-                    ▼                               ▼
-        ┌────────────────────┐         ┌────────────────────┐
-        │  STATIC HTTP ROUTE  │         │ PLAYWRIGHT ROUTE   │
-        │  httpx (0 MB RAM)   │         │ Chromium (150-300MB)│
-        └────────┬───────────┘         └────────┬───────────┘
-                 │                              │
-                 └──────────────┬──────────────┘
-                                │
-                                ▼
-              ┌──────────────────────────────────┐
-              │       EXTRACTOR PIPELINE          │
-              │  Sitemap → Parser → Cleaner → CSV │
-              └──────────────────────────────────┘
+                         ┌─────────────────┐
+                         │  Incoming URL    │
+                         └────────┬────────┘
+                                  │
+                                  ▼
+               ┌──────────────────────────────────────┐
+               │      DYNAMIC DETECTION MIDDLEWARE    │
+               │      (Priority 542 — Phase 3)        │
+               │      Static HTTP or Playwright?      │
+               └──────────────────┬───────────────────┘
+                                  │
+                                  ▼
+               ┌──────────────────────────────────────┐
+               │      EXTRACTION PIPELINE (100)       │
+               │      BS4 + Trafilatura + Style       │
+               └──────────────────┬───────────────────┘
+                                  │
+                                  ▼
+               ┌──────────────────────────────────────┐
+               │  ┌──────────────────────────────────┐ │
+               │  │ PHASE 4A — STORAGE ENGINE        │ │
+               │  │                                  │ │
+               │  │ [110] → MarkdownExtraction       │ │
+               │  │       + MultimodalAssetExtractor │ │
+               │  │ [150] → NexoraStylePipeline      │ │
+               │  │ [160] → UnifiedSchemaEnricher    │ │
+               │  │ [165] → MetadataIndexerPipeline  │ │
+               │  │ [250] → Phase 4B pipelines       │ │
+               │  │ [450] → ParquetExportPipeline    │ │
+               │  └──────────────────────────────────┘ │
+               └──────────────────┬───────────────────┘
+                                  │
+                                  ▼
+               ┌──────────────────────────────────────┐
+               │      EXPORT LAYER                    │
+               │  [500] → JSON + CSV per page         │
+               │  [600] → Master dataset CSV          │
+               └──────────────────────────────────────┘
+                                  │
+                                  ▼
+            ┌────────────┬────────────┬────────────┐
+            ▼            ▼            ▼            ▼
+         Markdown    JSON/CSV    Parquet      SQLite
+         (LLM)      (Inspect)   (ML/BI)     (Metadata)
 ```
 
 ### 8-Signal Decision Tree
@@ -176,34 +197,51 @@ HTTP GET → [1]Anti-Bot 403/429/503 → [1b]Anti-Bot 200 → [2]Short Body (<20
 NEXUS AURORA/
 ├── README.md
 ├── REPOSITORY_STRUCTURE.md
-├── Nexora application/            ← Main application source
+├── Nexora application/                     ← Main application source
 │   ├── requirements.txt
-│   ├── Crawler/                   Scrapy project with Phase 3 middleware
+│   ├── Crawler/                            Scrapy project with Phases 1-4A
 │   │   └── nexora_crawler/
 │   │       ├── middlewares/
-│   │       │   ├── dynamic_detection.py    ★ Phase 3 core engine
+│   │       │   ├── dynamic_detection.py          ★ Phase 3 core engine
+│   │       │   ├── exponential_backoff.py
 │   │       │   └── playwright_cleanup.py
+│   │       ├── pipelines/                        ★ Phase 4A modular pipelines
+│   │       │   ├── __init__.py                   Phase 1-3 pipelines
+│   │       │   ├── markdown_pipeline.py          ★ Phase 4A
+│   │       │   ├── schema_enricher.py            ★ Phase 4A
+│   │       │   ├── metadata_indexer.py           ★ Phase 4A
+│   │       │   └── parquet_export.py             ★ Phase 4A
+│   │       ├── storage/                          ★ Phase 4A storage layer
+│   │       │   ├── base.py                       Abstract interfaces
+│   │       │   ├── models.py                     Unified schema dataclass
+│   │       │   └── local_sqlite.py               SQLite implementation
 │   │       ├── spiders/
 │   │       │   └── nexora_spider.py
-│   │       ├── api.py             FastAPI + interactive CLI
-│   │       ├── settings.py
-│   │       ├── pipelines.py
+│   │       ├── api.py                 FastAPI + interactive CLI
+│   │       ├── items.py               Updated with Phase 4A fields
+│   │       ├── settings.py            Updated with Phase 4A priorities
 │   │       └── sitemap_detector.py
-│   ├── Extractor/                 Phase 1 — single-page extraction
+│   ├── Extractor/
+│   │   ├── multimodal_extractor.py                ★ Phase 4A
+│   │   └── ...
 │   ├── Models/
-│   │   └── lid.176.ftz            Language detection model
+│   │   └── lid.176.ftz
 │   ├── output/
-│   │   ├── audit/                 ★ Benchmark reports & architecture docs
-│   │   ├── pages/                 Crawled page exports
+│   │   ├── audit/                                 Test reports & benchmarks
+│   │   │   ├── phase3_*.md
+│   │   │   └── phase4a_test1_report.md            ★ Phase 4A
+│   │   ├── parquet/                               ★ Phase 4A Parquet exports
+│   │   ├── pages/
 │   │   └── master_dataset.csv
 │   ├── tests/
-│   │   ├── real_site_benchmark_phase3.py   ★ 50-site benchmark
-│   │   ├── real_site_test_phase3.py        ★ Quick validation
-│   │   └── test_phase3_*.py
-│   └── release_notes_v3b_v0.4.0.md
+│   │   ├── test_phase4a.py                        ★ 18-test Phase 4A suite
+│   │   ├── test_phase3_*.py
+│   │   └── ...
+│   └── release_notes_v4.1.0.md
 ├── data/
-│   └── test_profiles.db           SQLite site profile cache
-└── Project Tools/                 Specs and roadmaps
+│   ├── test_profiles.db
+│   └── nexora_metadata.db                         ★ Phase 4A auto-created DB
+└── Project Tools/
 ```
 
 For full details, see [REPOSITORY_STRUCTURE.md](REPOSITORY_STRUCTURE.md).
@@ -227,6 +265,11 @@ pip install -r requirements.txt
 pip install scrapy-playwright playwright
 playwright install chromium
 set NEXORA_PLAYWRIGHT_ENABLED=1
+```
+
+### Install Phase 4A Dependencies
+```powershell
+pip install pandas pyarrow
 ```
 
 ### Optional: Language Detection Model
@@ -276,11 +319,21 @@ set NEXORA_STEALTH_ENABLED=1
 scrapy crawl nexora -a urls="https://example.com"
 ```
 
-The middleware:
-1. Probes each URL via HTTP (httpx)
-2. Decides if JS rendering is needed (8 signals)
-3. Caches the decision in SQLite (24-hour TTL)
-4. Routes to Playwright only for JS-required pages
+### Phase 4A — Storage & Multi-Format Export
+Phase 4A pipelines run automatically as part of the Scrapy pipeline chain. No additional commands needed. Outputs are generated in:
+
+| Format | Location | Description |
+|--------|----------|-------------|
+| Markdown | `item["markdown"]` | In-memory; also in JSON/CSV exports |
+| SQLite | `data/nexora_metadata.db` | Relational metadata store |
+| Parquet | `output/parquet/` | Compressed columnar files |
+| JSON/CSV | `output/pages/` | Per-page exports (existing) |
+
+To verify the Phase 4A pipeline is working:
+```powershell
+cd "Nexora application/tests"
+python -m pytest test_phase4a.py -v
+```
 
 ### Benchmark Suite
 ```powershell
@@ -290,6 +343,9 @@ python tests/real_site_test_phase3.py
 
 # Full 50-site benchmark (~4 minutes, rate-limited)
 python tests/real_site_benchmark_phase3.py
+
+# Phase 4A storage engine tests (18 tests)
+python -m pytest tests/test_phase4a.py -v
 ```
 
 ---
@@ -313,22 +369,27 @@ All strategies respect `max_pages` safety cap (default: 1000, max: 50000).
 output/
 ├── pages/
 │   ├── example.com__about__20250624T143022.json
-│   └── example.com__about__20250624T143022.csv
-└── master_dataset.csv
+│   ├── example.com__about__20250624T143022.csv
+├── parquet/                               ← NEW Phase 4A
+│   └── nexora_20260630_190925_0000.parquet
+data/
+└── nexora_metadata.db                     ← NEW Phase 4A
 ```
 
-### Key Fields
-| Field | Description |
-|-------|-------------|
-| `url` | Final resolved URL |
-| `title` | Page title |
-| `clean_text` | Reader-mode article text |
-| `fingerprint` | SimHash near-duplicate signature |
-| `language_iso` | ISO-639-1 language code |
-| `structured_schema` | JSON-LD / microdata / RDFa payloads |
-| `social_graphs` | Open Graph + Twitter Card values |
-| `styles` | CSS framework, theme, fonts, colors, layout |
-| `html` | Raw HTML (included in JSON exports) |
+### Phase 4A Fields (Added to Existing)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `markdown` | str | Clean Markdown content (Trafilatura) |
+| `extraction_method` | str | trafilatura / fallback / error |
+| `token_reduction_pct` | float | % of tokens reduced vs raw HTML |
+| `image_assets` | list[dict] | Structured image metadata (src, alt, dimensions, hero) |
+| `video_assets` | list[dict] | Structured video metadata (src, poster, platform) |
+| `crawl_id` | str | UUID of crawl job |
+| `entities` | dict | Prices, currency, tickers, products, people |
+| `style_analysis` | dict | Colors, tech_stack, framework, theme, fonts |
+| `quality_scores` | dict | Readability, duplication, text_density, crawl_quality |
+| `website_type` | str | e-commerce, blog, docs, article, unknown |
 
 ---
 
@@ -340,11 +401,15 @@ Key settings in `Crawler/nexora_crawler/settings.py`:
 |---------|---------|---------|
 | `NEXORA_PLAYWRIGHT_ENABLED` | `True` | Enable Playwright for JS pages |
 | `NEXORA_STEALTH_ENABLED` | `True` | Apply bot-detection evasion |
-| `NEXORA_SITE_PROFILE_DB` | `data/site_profiles.db` | Profile cache path |
+| `NEXORA_MARKDOWN_ENABLED` | `True` | Enable HTML → Markdown conversion |
+| `NEXORA_PARQUET_ENABLED` | `True` | Enable compressed Parquet export |
+| `NEXORA_PARQUET_COMPRESSION` | `snappy` | Parquet compression: snappy/gzip/zstd/brotli |
+| `NEXORA_PARQUET_ROW_GROUP_SIZE` | `10000` | Rows per Parquet row group |
+| `NEXORA_PARQUET_OUTPUT` | `./output/parquet` | Parquet output directory |
+| `NEXORA_METADATA_DB` | `./data/nexora_metadata.db` | SQLite metadata database path |
 | `ROBOTSTXT_OBEY` | `True` | Respect robots.txt |
 | `DOWNLOAD_DELAY` | `1.5` | Base delay between requests (seconds) |
 | `AUTOTHROTTLE_ENABLED` | `True` | Adapt delay to server response time |
-| `HTTPCACHE_ENABLED` | `True` | Cache responses during development |
 
 ---
 
@@ -353,15 +418,21 @@ Key settings in `Crawler/nexora_crawler/settings.py`:
 ```powershell
 cd "Nexora application"
 
-# Quick live-site validation (4 tests)
+# Phase 3 — Live-site validation
 python tests/real_site_test_phase3.py
 
-# Full 50-site benchmark (~4 min)
+# Phase 3 — 50-site benchmark (~4 min)
 python tests/real_site_benchmark_phase3.py
 
-# Unit tests
+# Phase 3 — Unit + integration
 pytest tests/test_phase3_component.py -v
 pytest tests/test_phase3_integration.py -v
+
+# Phase 4A — Storage engine (18 tests)
+python -m pytest tests/test_phase4a.py -v
+
+# Phase 4A — Filter by test case
+python -m pytest tests/test_phase4a.py -v -k "P4A-T01 or P4A-T10"
 ```
 
 ---
@@ -374,20 +445,21 @@ pytest tests/test_phase3_integration.py -v
 | **2 / 2.5** | ✅ Complete | Multi-page Scrapy crawler + style extraction |
 | **2.6** | ✅ Complete | FastAPI REST API + interactive CLI + sitemap discovery |
 | **3** | ✅ Complete (3.4) | DynamicDetectionMiddleware with 8-signal engine, 85-90% accuracy |
-| **3b** | 🔜 Next | Data storage pipeline + LLM integration |
-| **4** | 📋 Planned | AI summarization, embeddings, RAG pipeline |
+| **4A** | ✅ Complete (v4.1.0) | Storage & Multi-Format Ingestion Engine (Markdown, multimodal, unified schema, SQLite, Parquet) |
+| **4B** | 🔜 Next | AI enrichment, LLM summarization, embeddings, RAG chunking |
 | **5** | 📋 Planned | Distributed crawling, shared profile cache |
 | **6** | 📋 Planned | Tauri desktop application |
 
 ---
 
-## Known Limitations (v3.4)
+## Known Limitations (v4.1.0)
 
 - **Network-dependent** — ~12% of sites may timeout; these correctly fallback to Playwright but add latency
 - **Angular production builds** — `ng-version=` attribute is removed; detection relies on bundle patterns
 - **No auth** — FastAPI endpoints are open; job store is in-memory only
 - **Some heavy SPAs** — TikTok relies on script ratio (>0.35) rather than framework markers
-- **Legacy copy** — `nexora app v2/` is a snapshot; use canonical `Nexora application/`
+- **Phase 4B not yet implemented** — AI enrichment, embeddings, and RAG chunking are placeholders only
+- **Parquet requires pandas+pyarrow** — must be installed separately
 
 ---
 
@@ -398,5 +470,5 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <strong>NEXUS AURORA v3.4.0</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
+  <strong>NEXUS AURORA v4.1.0</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
 </p>
