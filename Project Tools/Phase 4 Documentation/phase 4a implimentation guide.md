@@ -3,6 +3,14 @@
 ## Objective
 This guide explains how to implement Phase 4A in the current Nexora codebase so that the system can move from raw HTML extraction to a richer, schema-aware ingestion layer.
 
+## Phase 4A v4.2 scope limit (applies to this pass)
+This implementation pass is intentionally limited to the Phase 4A storage and ingestion scope. The Phase 7 items that are relevant to 4A are retained only where they directly support the 4A data contract:
+
+- Preserve the existing 100 → 160 → 165 → 450 → 500 → 600 pipeline ordering.
+- Keep the local SQLite metadata store as the canonical relational index.
+- Preserve Parquet export as a compressed analytical sink.
+- Do not introduce Phase 7-only features such as vector stores, webhook delivery, or quota enforcement in this pass.
+
 ## Current reality check
 Phase 4A is a strong design direction, but it is not a drop-in implementation for the current repository as-is.
 

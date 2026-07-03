@@ -32,7 +32,7 @@ class ParquetExportPipeline:
         self.output_dir = self.settings.get('NEXORA_PARQUET_OUTPUT', './output/parquet')
 
         self._buffer = []
-        self._buffer_size = 20  # Flush every 20 items for better responsiveness
+        self._buffer_size = 100  # Flush every 100 items to match Phase 4A batch sizing
         self._total_rows = 0
         self._file_counter = 0
         self._spider_name = "nexora"  # default

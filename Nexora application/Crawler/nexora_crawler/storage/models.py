@@ -19,7 +19,7 @@ class NexoraUnifiedRecord:
     crawl_id: str = ""          # UUID of crawl job
 
     # — Content —
-    markdown_content: str = ""    # Clean Markdown (primary)
+    markdown: str = ""            # Clean Markdown (primary)
     clean_text: str = ""        # Fallback plain text
     html_length: int = 0
     markdown_word_count: int = 0
@@ -91,6 +91,6 @@ class NexoraUnifiedRecord:
         d["ai_tags_json"] = json.dumps(d.pop("ai_tags"))
         d["ai_embedding_json"] = json.dumps(d.pop("ai_embedding"))
         # Remove heavy text fields (stored separately)
-        d.pop("markdown_content", None)
+        d.pop("markdown", None)
         d.pop("clean_text", None)
         return d
