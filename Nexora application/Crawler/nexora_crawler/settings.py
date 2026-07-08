@@ -109,8 +109,19 @@ DOWNLOADER_MIDDLEWARES = {
 }
 
 # ── Item Pipelines ────────────────────────────────────────────────────────────
-# Order matters: lower numbers run first.
-#
+# Order matters: lower numbers run first. 
+# when user enters url , where does it first go  ? 
+#This is what happens when a user enters a URL in the crawler:
+# 1. The URL is sent to the Scrapy engine, which manages the crawling process(see file Crawler/nexora_crawler/spiders/nexora_spider.py).
+# 2. The engine sends the URL to the spider(see the file Crawler /  ), which is responsible for extracting data from the web page.
+ # The spider processes the URL and yields an item containing the extracted data.
+# 3. The item is sent to the item pipelines, which are responsible for processing and storing the extracted data.
+# 4. The item pipelines are defined in the settings.py file, and they are executed in the order specified by their priority values. Lower numbers run first.
+# 5. Each pipeline can perform different tasks, such as cleaning the data, enriching it with additional information, or storing it in a database or file.
+# 6. Once all the pipelines have processed the item, it is considered complete and can be stored or exported as needed.
+# 7. where does , deduplication check happen? 
+# This is what happens : 
+
 # Complete Phase 1-4A pipeline chain:
 #   100  ExtractionPipeline          ← Phase 1-2: structured data extraction
 #   110  MarkdownExtractionPipeline  ← Phase 4A: HTML → clean Markdown + multimodal assets
@@ -131,6 +142,15 @@ ITEM_PIPELINES = {
     "nexora_crawler.pipelines.parquet_export.ParquetExportPipeline": 450,
     "nexora_crawler.pipelines.NexoraExportPipeline": 500,
     "nexora_crawler.pipelines.NexoraDatasetPipeline": 600,
+   
+    'nexora_crawler.pipelines.pii_redaction_pipeline.PIIRedactionPipeline': 200,      # Phase 7
+    'nexora_crawler.pipelines.ai_enrichment.AIEnrichmentPipeline': 250,            # Phase 4B
+    'nexora_crawler.pipelines.chunking_pipeline.StructuralChunkingPipeline': 260,    # Phase 4B
+    'nexora_crawler.pipelines.vector_index_pipeline.VectorIndexPipeline': 270,       # Phase 4B
+    'nexora_crawler.pipelines.schema_extraction_pipeline.SchemaExtractionPipeline': 280,  # Phase 7
+    'nexora_crawler.pipelines.parquet_export.ParquetExportPipeline': 450,
+    'nexora_crawler.pipelines.NexoraExportPipeline': 500,
+    'nexora_crawler.pipelines.NexoraDatasetPipeline': 600,
 }
 
 # ── HTTP Cache (dev only — speeds up re-runs without re-fetching) ─────────────
@@ -156,7 +176,7 @@ LOG_LEVEL = "INFO"
 # set playwright_meta on requests.
 # Set NEXORA_PLAYWRIGHT_ENABLED=true in .env or environment to enable.
 import os
-NEXORA_PLAYWRIGHT_ENABLED = os.getenv("NEXORA_PLAYWRIGHT_ENABLED", "false").lower() in ("1", "true", "yes")
+NEXORA_PLAYWRIGHT_ENABLED = os.getenv("NEXORA_PLAYWRIGHT_ENABLED", "true").lower() in ("1", "true", "yes")
 NEXORA_STEALTH_ENABLED = os.getenv("NEXORA_STEALTH_ENABLED", "true").lower() in ("1", "true", "yes")
 
 if NEXORA_PLAYWRIGHT_ENABLED:
@@ -209,3 +229,8 @@ NEXORA_PARQUET_OUTPUT = './output/parquet'
 
 # ── Phase 4A: Metadata Store Settings ─────────────────────────────────────────
 NEXORA_METADATA_DB = './data/nexora_metadata.db'
+NEXORA_VECTOR_BACKEND = "pgvector"  # pgvector | chroma | qdrant | cloudflare_vectorize
+NEXORA_DATABASE_URL = "postgresql://postgres:password@localhost:5432/nexora"
+NEXORA_EMBEDDING_DIM = 768  # nomic-embed-text: 768; OpenAI 3-small: 1536
+NEXORA_CHROMA_PATH = "./data/chroma"
+

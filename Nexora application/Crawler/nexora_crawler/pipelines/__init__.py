@@ -5,7 +5,7 @@ Item pipelines execute sequentially (in ITEM_PIPELINES order from settings.py)
 after the spider yields an item.
 
 
-Pipeline order:
+Pipeline order: (defined in nexora_crawler / settings.py)
     100  NexoraExtractionPipeline  — calls Phase 1 extractor on raw HTML
     150  NexoraStylePipeline       — extracts visual design intelligence
     200  NexoraExportPipeline      — saves per-page JSON + CSV to output/
@@ -53,7 +53,14 @@ from Extractor.parser import (
 from Extractor.cleaner import calculate_content_fingerprint, detect_language_iso
 
 
-class _BasePipeline:
+class _BasePipeline: 
+    
+    #What this class does is to provide a base pipeline for the Nexora application.
+    # It allows for common access to the crawler and provides methods that can be overridden by subclasses. 
+    # The class includes an __init__ method that initializes the crawler attribute to None, 
+    # a from_crawler class method that creates an instance of the pipeline and sets the crawler attribute,
+    # and open_spider and close_spider methods that can be overridden by subclasses to perform actions when the spider opens or closes.
+    
     """Base pipeline with common crawler access.
 
     Scrapy 2.16+ pipelines NO LONGER receive the spider argument.
@@ -63,36 +70,43 @@ class _BasePipeline:
     def __init__(self):
         self.crawler = None
 
-    @classmethod
+    @classmethod # what class methos means is that it is a method that is bound to the class and not the instance of the class. It can be called on the class itself, rather than on an instance of the class.
     def from_crawler(cls, crawler):
         obj = cls()
         obj.crawler = crawler
         return obj
 
     def open_spider(self):
-        """Called when spider opens. Override in subclasses."""
+        """Called when spider opens. Override in subclasses.""" 
+        # overidden by : NexoraExtractionPipeline, NexoraStylePipeline, NexoraExportPipeline, NexoraDatasetPipeline
         pass
 
     def close_spider(self):
         """Called when spider closes. Override in subclasses."""
+        # overidden by : NexoraExtractionPipeline, NexoraStylePipeline, NexoraExportPipeline, NexoraDatasetPipeline
         pass
 
 
 class NexoraExtractionPipeline(_BasePipeline):
     """Extracts structured data from raw HTML using multiple extractors."""
+    
+    # starts with priority 100, so it runs before NexoraStylePipeline (150) and NexoraExportPipeline (200)... 
 
     def open_spider(self):
-        super().open_spider()
-        self._seen_fingerprints = set()
-        self._max_fingerprints = 50_000
+        super().open_spider() # what it does is  that it overrides the open_method treating it as a subclass 
+        # fingerprinting for deduplication — keep a set of seen fingerprints in memory
+        self._seen_fingerprints = set() # this function is from the Extractor.cleaner module, and it is used to calculate a unique fingerprint for the content of a web page.
+        self._max_fingerprints = 50_000 # this is the maximum number of fingerprints to keep in memory before clearing the set
+        
 
-    async def process_item(self, item):
+    async def process_item(self, item): # in simple words items and self here represent the data that is extracted from the web page, and it is stored in the item dictionary(defined in items.py) under the key "html". The process_item method is called for each item that is yielded by the spider, and it passes the item to the extractors and updates the item with the extracted data. It also performs content fingerprinting for deduplication, language detection, and structured data extraction.  
+        # it passes the item to the extractors and updates the item with the extracted data. It also performs content fingerprinting for deduplication, language detection, and structured data extraction.
         """Scrapy 2.16+ async signature — no spider argument."""
         # Skip items already marked for skipping (e.g. duplicates from earlier runs)
         if item.get("__skip"):
             return item
 
-        html = item.get("html", "")
+        html = item.get("html", "") # is the data that is extracted from the web page, and it is stored in the item dictionary(defined in items.py , is this true : ) under the key "html". If the key does not exist, it will return an empty string.
         url = item.get("url", "")
         if not html:
             log.warning("Empty HTML for %s — skipping extraction.", url)
@@ -116,7 +130,7 @@ class NexoraExtractionPipeline(_BasePipeline):
         fingerprint = calculate_content_fingerprint(clean_text)
 
         if fingerprint and fingerprint != "0000000000000000":
-            if fingerprint in self._seen_fingerprints:
+            if fingerprint in self._seen_fingerprints: 
                 log.info("Duplicate fingerprint %s — skipping.", fingerprint)
                 item["__skip"] = True
                 return item
@@ -154,7 +168,7 @@ class NexoraExtractionPipeline(_BasePipeline):
         return item
 
 
-class NexoraStylePipeline(_BasePipeline):
+class NexoraStylePipeline(_BasePipeline): # _BaselinePipeline here represents a base class that provides common functionality for all pipelines in the Nexora application. It allows for common access to the crawler and provides methods that can be overridden by subclasses. The class includes an __init__ method that initializes the crawler attribute to None, a from_crawler class method that creates an instance of the pipeline and sets the crawler attribute, and open_spider and close_spider methods that can be overridden by subclasses to perform actions when the spider opens or closes. 
     """Extracts visual design intelligence (CSS framework, theme, fonts, etc.)."""
 
     async def process_item(self, item):
@@ -203,10 +217,12 @@ class NexoraExportPipeline(_BasePipeline):
         if "render_time_ms" not in item:
             item["render_time_ms"] = 0.0
 
-        parsed = urlparse(url)
-        domain = parsed.netloc.replace(".", "_")
-        path_slug = re.sub(r"[^A-Za-z0-9]+", "_", parsed.path).strip("_")[:40] or "root"
-        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        parsed = urlparse(url) #urlparse is a function from the urllib.parse module that takes a URL string as input and returns a ParseResult object containing the components of the URL (scheme, netloc, path, params, query, fragment). In this code snippet, it is used to extract the domain and path from the URL in order to create a unique base name for the output files.
+        domain = parsed.netloc.replace(".", "_") #only create a unique base name for the output files. It replaces dots in the domain with underscores to avoid issues with file naming.
+        path_slug = re.sub(r"[^A-Za-z0-9]+", "_", parsed.path).strip("_")[:40] or "root" # the pathslug is a sanitized version of the URL path that replaces non-alphanumeric characters with underscores, trims leading/trailing underscores, and limits the length to 40 characters. If the path is empty, it defaults to "root". This ensures that the output files have valid and unique names based on the URL structure.
+        
+         #fix the date format to be compatible with file naming conventions. It generates a timestamp in the format YYYYMMDDTHHMMSS (e.g., 20230615T123456) to ensure that the output files have unique names based on the time they were created.
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") # strftime is a method from the datetime module that formats a datetime object into a string representation based on the specified format. In this case, it formats the current UTC time into a string with the format "YYYYMMDDTHHMMSS" (e.g., "20230615T123456"). This timestamp is used to create unique filenames for the output files, ensuring that each file has a distinct name based on the time it was created.
         base_name = f"{domain}__{path_slug}__{ts}"
 
         # Convert item to plain dict for serialization
@@ -218,7 +234,10 @@ class NexoraExportPipeline(_BasePipeline):
         json_path = os.path.join(self.output_dir, f"{base_name}.json")
         try:
             with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+                json.dump(data, f, indent=2, ensure_ascii=False) #why json.dump is used here is to serialize the data dictionary (which contains the extracted information from the web page) into a JSON formatted string and write it to a file. The parameters used in json.dump are as follows:
+                # f: The file object to which the JSON data will be written.
+                # indent=2: Specifies the indentation level for pretty-printing the JSON data, making it more human-readable.
+                # ensure_ascii=False: Ensures that non-ASCII characters are preserved in the output, 
             item["saved_json"] = json_path
         except Exception as exc:
             log.error("JSON export failed for %s: %s", url, exc)
@@ -256,7 +275,7 @@ class NexoraDatasetPipeline(_BasePipeline):
         dataset_dir = os.path.join(_PROJECT_ROOT, "output")
         os.makedirs(dataset_dir, exist_ok=True)
         self.dataset_path = os.path.join(dataset_dir, "master_dataset.csv")
-        self._seen_urls = set()
+        self._seen_urls = set() #method from 
         write_header = not os.path.exists(self.dataset_path)
         self.f = open(self.dataset_path, "a", newline="", encoding="utf-8")
         self.writer = csv.DictWriter(self.f, fieldnames=self.MASTER_FIELDS)

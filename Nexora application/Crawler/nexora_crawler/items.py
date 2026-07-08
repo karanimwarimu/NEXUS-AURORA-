@@ -4,12 +4,11 @@ nexora_crawler/items.py
 Defines the data contract for every page Scrapy fetches.
 
 Think of an Item as a typed dict — it travels through the spider →
-pipeline → exporter chain. Fields are defined here so every component
-agrees on the same shape.
+pipeline → exporter chain. 
+Fields are defined here so every component agrees on the same shape.makes the application have a global shared variable.
 
 Phase 3 hook: the `playwright_used` flag will be set True by the
-Playwright middleware, letting downstream code know HOW the page
-was rendered.
+Playwright middleware, letting downstream code know HOW the page was rendered.
 
 Phase 4A: Added markdown, multimodal asset, and unified schema fields.
           Placeholder fields for Phase 4B AI enrichment reserved here.
@@ -46,12 +45,12 @@ class NexoraPageItem(scrapy.Item):
     image_assets         = scrapy.Field()  # list[dict] — rich image asset descriptors
 
     # ── Extraction fields (populated by NexoraExtractionPipeline) ─────────
-    title            = scrapy.Field()
+    title            = scrapy.Field() # Identity field
     description      = scrapy.Field()
     keywords         = scrapy.Field()
     meta_tags        = scrapy.Field()
     headings         = scrapy.Field()
-    images           = scrapy.Field()
+    images           = scrapy.Field() 
     internal_links   = scrapy.Field()
     word_count_raw   = scrapy.Field()
     clean_text       = scrapy.Field()
@@ -94,6 +93,7 @@ class NexoraPageItem(scrapy.Item):
     style_analysis = scrapy.Field()       # dict — colors, tech_stack, framework, theme, fonts
     quality_scores = scrapy.Field()       # dict — readability, duplication, text_density, crawl_quality
     website_type = scrapy.Field()         # str — e-commerce, blog, docs, article, unknown
+    workspace_id = scrapy.Field()  #          str — UUID of workspace
 
     # ── Phase 4B: AI Enrichment (reserved — populated later) ──────────────
     ai_summary = scrapy.Field()           # str — 2-3 sentence LLM summary
@@ -104,3 +104,4 @@ class NexoraPageItem(scrapy.Item):
     chunk_count = scrapy.Field()          # int — number of chunks
     chunk_ids = scrapy.Field()            # list[str] — chunk UUIDs
     has_embedding = scrapy.Field()        # bool — embedding generated flag
+    

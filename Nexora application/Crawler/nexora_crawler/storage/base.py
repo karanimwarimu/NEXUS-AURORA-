@@ -110,7 +110,14 @@ class BaseMetadataStore(ABC):
 
 
 class BaseVectorStore(ABC):
-    """Abstract interface for vector storage and semantic search."""
+    """
+    Abstract interface for vector storage and semantic search.
+    
+    .. deprecated:: Phase 4A
+        The canonical vector store interface is now :class:`nexora_crawler.vector_store.base.BaseVectorStore`.
+        This legacy class remains for backward compatibility with Phase 4A pipelines but has a reduced/method-incompatible surface.
+        New code must import from ``nexora_crawler.vector_store.base`` and implement against that contract.
+    """
 
     @abstractmethod
     async def connect(self) -> None:

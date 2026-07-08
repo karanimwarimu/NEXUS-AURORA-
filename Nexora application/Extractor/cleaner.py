@@ -25,7 +25,7 @@ except Exception:  # pragma: no cover
     Simhash = None
 
 try:
-    import fasttext  # type: ignore
+    import fasttext  # type: ignore  # fastetxt used to language content discover ,neeeds the model because it is a pretrained model for language detection
 except Exception:  # pragma: no cover
     fasttext = None
 
@@ -34,7 +34,7 @@ except Exception:  # pragma: no cover
 #   - Extractor/../models/lid.176.ftz  (models/ is sibling of Extractor/)
 # Also supported:
 #   - Extractor/lid.176.ftz            (legacy)
-_DEFAULT_FT_MODEL = "lid.176.ftz"
+_DEFAULT_FT_MODEL = "lid.176.ftz" # used to detect language of text content, for metadata enrichment and filtering used with the fasttext module 
 _FT_MODEL_DIRNAME_CANDIDATES = [
     "models",  # repo_root/models
     "",         # legacy: alongside Extractor
@@ -63,12 +63,12 @@ def _ft_model_path() -> Optional[str]:
     return None
 
 
-_ft_model: Optional[Any] = None
+_ft_model: Optional[Any] = None # just a placeholder initialized to none.
 
 
 def _get_fasttext_model() -> Optional[Any]:
     """Lazy-load fastText model and return it, or None if unavailable."""
-    global _ft_model
+    global _ft_model # initialized once and cached for future calls what global does is that it allows us to modify the global variable _ft_model inside this function, so that we can cache the loaded model and avoid reloading it on subsequent calls.
     if _ft_model is not None:
         return _ft_model
 
@@ -80,7 +80,7 @@ def _get_fasttext_model() -> Optional[Any]:
         return None
 
     try:
-        _ft_model = fasttext.load_model(path)
+        _ft_model = fasttext.load_model(path) # we combine the path to the model file with the fasttext.load_model function to load the model from the specified path and assign it to the global variable _ft_model.  
         return _ft_model
     except Exception as e:  # pragma: no cover
         logger.warning(f"FastText model load failed: {e}")
@@ -99,21 +99,24 @@ def calculate_content_fingerprint(text: str) -> str:
 
     The pipeline treats "0000000000000000" as a sentinel for "unavailable".
     """
-    if not text or len(text.strip()) < 10:
+    
+    #simhash - technique to generate unique fingerprint , used to check near duplicate content using fingerprint.
+    if not text or len(text.strip()) < 10: # 
         return "0000000000000000"
 
-    tokens = re.findall(r"\w+", text.lower())
+    tokens = re.findall(r"\w+", text.lower()) # tokens - individual words , separated by whitespace , converted to lowercase.
     if not tokens:
         return "0000000000000000"
 
-    if Simhash is not None:
+    if Simhash is not None: #simhash - library to do simhashing
         try:
             return str(Simhash(tokens).value)
         except Exception as e:  # pragma: no cover
             logger.warning(f"SimHash computation failed: {e}")
 
     # Fallback: stable deterministic hash (not near-duplicate, but keeps robustness)
-    return str(abs(hash(" ".join(tokens))) % (10**16))
+    return str(abs(hash(" ".join(tokens))) % (10**16)) 
+#what it returns is a string representation of the absolute value of the hash of the joined tokens, modulo 10^16. This ensures that the fingerprint is a fixed-length string, even if Simhash is not available.
 
 
 def detect_language_iso(text: str) -> Tuple[str, float]:
@@ -125,7 +128,7 @@ def detect_language_iso(text: str) -> Tuple[str, float]:
     Fallback:
       ("en", 0.0) when model/deps are missing or text is too short.
     """
-    fallback = ("en", 0.0)
+    fallback = ("en", 0.0) # he confidence score is the models evaluation of detected langauge 
     if not text or len(text.strip()) < 20:
         return fallback
 
@@ -134,7 +137,7 @@ def detect_language_iso(text: str) -> Tuple[str, float]:
         return fallback
 
     try:
-        sanitized_sample = text.replace("\n", " ").strip()[:5000]
+        sanitized_sample = text.replace("\n", " ").strip()[:5000] # :5000  # fastText has a 5k char limit
         predictions = model.predict(sanitized_sample, k=1)
         lang_code = predictions[0][0].replace("__label__", "")
         confidence = float(predictions[1][0])

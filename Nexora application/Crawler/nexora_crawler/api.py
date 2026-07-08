@@ -18,23 +18,23 @@ Usage:
   scrapy crawl nexora -a urls="https://example.com" -a strategy="whole-website"
 """
 
-from __future__ import annotations
+from __future__ import annotations # used for 
 
-import argparse
-import asyncio
+import argparse # used for building CLI argument parser . adds  --flags and help text
+import asyncio #run ssync tasks in background
 import logging
 import os
-import sys
-from contextlib import asynccontextmanager
+import sys # exit the program if needed , access command line arguments
+from contextlib import asynccontextmanager # used for defining async context managers , manage startup and shutdown events in FastAPI
 from datetime import datetime
 from typing import Literal
 
-import httpx
-import uvicorn
+import httpx # Async HTTP client for making requests to validate URLs , defines how fastapi endpoints will accept and validate input data and talk to other apis
+import uvicorn # runs the FastAPI server(asgis means "asynchronous server gateway interface" , uvicorn is a lightweight ASGI server implementation for running FastAPI applications)
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl #validate and serialize data models for FastAPI endpoints
 from scrapy.crawler import CrawlerProcess
-from scrapy.utils.project import get_project_settings
+from scrapy.utils.project import get_project_settings # loads scrapy settings 
 
 # Ensure the project root is on sys.path for `python api.py` direct execution
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -50,7 +50,7 @@ import nexora_crawler.settings  # noqa: F401
 log = logging.getLogger("nexora.api")
 log.propagate = False  # Prevent duplicate log entries from root logger
 if not log.handlers:
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler() # 
     formatter = logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
     handler.setFormatter(formatter)
     log.addHandler(handler)
@@ -69,7 +69,7 @@ class CrawlRequest(BaseModel):
         "whole-website",
         "everything",
     ] = Field(default="single-page", description="Crawl depth strategy")
-    max_pages: int = Field(default=1000, ge=1, le=50000, description="Safety cap on pages")
+    max_pages: int = Field(default=100, ge=1, le=50000, description="Safety cap on pages")
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -148,7 +148,7 @@ async def start_crawl(request: CrawlRequest):
     # Validate URL is reachable
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.head(url_str, follow_redirects=True)
+            resp = await client.head(url_str, follow_redirects=True )
             if resp.status_code >= 400:
                 raise HTTPException(
                     status_code=400,
@@ -213,7 +213,7 @@ async def _run_crawl(job_id: str, url: str, strategy: str, max_pages: int):
             max_pages=max_pages,
         )
 
-        # Run in thread pool (Scrapy is synchronous internally)
+        # Run in thread pool (Scrapy is synchronous internally)# the main heat is here 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, process.start, False)
 

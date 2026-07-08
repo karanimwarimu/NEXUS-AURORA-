@@ -46,7 +46,7 @@ BLOCKED_PATH_PATTERNS = [
     r"/logout",
     r"/signup",
     r"/register",
-    r"/admin/",
+    r"/admin/", 
     r"/search\?",
     r"/feedback",
     r"/cart",
@@ -59,7 +59,7 @@ BLOCKED_PATH_PATTERNS = [
     r"\.(mp4|mp3|avi|mov|wmv)$",
     r"\.(css|js|woff|woff2|ttf)$",
 ]
-_BLOCKED_RE = re.compile("|".join(BLOCKED_PATH_PATTERNS), re.IGNORECASE)
+_BLOCKED_RE = re.compile("|".join(BLOCKED_PATH_PATTERNS), re.IGNORECASE) # what regex does is : it compiles the regex patterns into a single regex object that can be used to match against URLs. The re.IGNORECASE flag makes the matching case-insensitive, so it will match patterns regardless of whether they are in uppercase or lowercase. This is useful for filtering out unwanted paths in web crawling, such as login pages, admin pages, and certain file types like images and videos.
 
 
 class NexoraUserAgentMiddleware:
@@ -93,6 +93,10 @@ class ContentTypeFilterMiddleware:
     @classmethod
     def from_crawler(cls, crawler):
         return cls(crawler)
+    
+    
+    # the initiallizing of the middleware class, which takes an optional crawler argument and assigns it to the instance variable self.crawler. This allows the middleware to access the Scrapy crawler object if needed.
+    # from crawler_class method is a factory method that creates an instance of the middleware class from the Scrapy crawler. It takes the crawler as an argument and returns an instance of the middleware class, allowing it to be integrated into the Scrapy framework.
 
     async def process_request(self, request):
         """Block requests to URLs matching blocked patterns.
@@ -103,7 +107,7 @@ class ContentTypeFilterMiddleware:
             log.debug("[ALLOW-PW] %s", _short(request.url))
             return None
 
-        path = urlparse(request.url).path
+        path = urlparse(request.url).path # urlparse here is used to extract the path component of the URL from the request. The path is the part of the URL that comes after the domain name and before any query parameters or fragments. For example, in the URL "https://example.com/account/login?next=/dashboard", the path would be "/account/login". This path is then checked against a list of blocked patterns to determine if the request should be allowed or blocked.
         if _BLOCKED_RE.search(path):
             log.debug("[BLOCK-req] pattern match -> %s", request.url)
             raise IgnoreRequest(f"Blocked URL pattern: {request.url}")

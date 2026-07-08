@@ -71,14 +71,18 @@ class UnifiedSchemaEnricher:
                 "text_density": 0.0,
                 "crawl_quality": 1.0,
             }
-
+ 
+        if not item.get("workspace_id"):
+          item["workspace_id"] = getattr(spider, "workspace_id", "default") if spider else "default"
+          
         # Ensure website_type classification
         if not item.get("website_type"):
             item["website_type"] = self._classify_website_type(item)
 
         self.stats["items_enriched"] += 1
         return item
-
+        
+        
     def _classify_website_type(self, item) -> str:
         """Heuristic classification of page type."""
         url = item.get("url", "").lower()
