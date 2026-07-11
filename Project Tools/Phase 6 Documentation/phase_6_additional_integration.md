@@ -708,3 +708,92 @@ pub async fn get_audit_logs(
 // - Audit log viewer
 // - Quota usage display
 """
+ 
+
+
+ Nexora Local Integration Feature: Ollama Hardware Tier Profiles
+This feature exposes structured local model configuration presets based on the desktop user's hardware. Grouping the embedding and generation models into specific "Tiers" ensures a seamless, out-of-the-box local experience without triggering out-of-memory errors or freezing host interfaces.
+
+1. Local Tier Profiles Blueprint
+Provide these specific options within the user interface or configuration files:
+
+🟢 Tier 1: Ultra-Lightweight (8GB RAM / Basic CPU)
+For older laptops or machines without a dedicated graphics card. Focuses on speed and low background footprints.
+
+Text Generation Model (NEXORA_AI_MODEL): gemma3:4b (Size: ~3.3 GB)
+
+Highly efficient edge model; delivers fast token output entirely over standard CPU.
+
+Embedding Model (NEXORA_AI_EMBEDDING_MODEL): all-minilm (Size: ~45 MB)
+
+Extremely low memory profile; ideal for processing short text blocks without latency.
+
+🟡 Tier 2: Balanced Default (16GB RAM / Apple Silicon M-Series / Budget GPU)
+The recommended tier for mid-range setups. Offers strong general logic and handles complex formatting easily.
+
+Text Generation Model (NEXORA_AI_MODEL): qwen3:4b (Size: ~2.8 GB) or qwen2.5:7b (Size: ~4.7 GB)
+
+Excellent instruction-following and coding logic at a lightweight scale.
+
+Embedding Model (NEXORA_AI_EMBEDDING_MODEL): nomic-embed-text (Size: ~274 MB)
+
+The RAG industry standard. Supports a massive 8k context window to prevent text clipping.
+
+🔵 Tier 3: Deep Reasoning (16GB+ RAM / High-End Dedicated GPU)
+For advanced users running specialized workloads requiring long chain-of-thought analysis.
+
+Text Generation Model (NEXORA_AI_MODEL): deepseek-r1:7b or deepseek-r1:8b (Size: ~4.7 GB)
+
+Executes deeper evaluation loops before outputting answers; maximizes relational extraction accuracy.
+
+Embedding Model (NEXORA_AI_EMBEDDING_MODEL): nomic-embed-text (Size: ~274 MB)
+
+2. Configuration Schema Implementation
+Add this validation block into the core settings module to automatically apply target variables when a user picks their tier:
+
+Python
+# settings/ai_profiles.py
+
+OLLAMA_HARDWARE_PROFILES = {
+    "tier_1_lightweight": {
+        "NEXORA_AI_MODEL": "gemma3:4b",
+        "NEXORA_AI_EMBEDDING_MODEL": "all-minilm",
+        "NEXORA_AI_MAX_CONCURRENT": 1,
+        "NEXORA_AI_TIMEOUT": 90,
+        "description": "Optimized for 8GB RAM setups. Prioritizes stability and fast generation."
+    },
+    "tier_2_balanced": {
+        "NEXORA_AI_MODEL": "qwen3:4b", 
+        "NEXORA_AI_EMBEDDING_MODEL": "nomic-embed-text",
+        "NEXORA_AI_MAX_CONCURRENT": 2,
+        "NEXORA_AI_TIMEOUT": 60,
+        "description": "Standard configuration for 16GB RAM. High contextual accuracy."
+    },
+    "tier_3_reasoning": {
+        "NEXORA_AI_MODEL": "deepseek-r1:7b",
+        "NEXORA_AI_EMBEDDING_MODEL": "nomic-embed-text",
+        "NEXORA_AI_MAX_CONCURRENT": 2,
+        "NEXORA_AI_TIMEOUT": 120,
+        "description": "Requires 16GB+ RAM and strong GPU. Activates DeepSeek reasoning chains."
+    }
+}
+3. Mandatory Setup Script for Native End-Users
+To ensure users don't encounter missing model exceptions at runtime, include this initialization script in your setup documentation. It guarantees all necessary assets are fetched into their local Ollama instance beforehand:
+
+Bash
+#!/bin/bash
+# setup_local_models.sh
+
+echo "Initializing Nexora local AI environments..."
+
+# Tier 1 Components
+ollama pull gemma3:4b
+ollama pull all-minilm
+
+# Tier 2 & 3 Components
+ollama pull qwen3:4b
+ollama pull deepseek-r1:7b
+ollama pull nomic-embed-text
+
+echo "Local model environment synchronization complete!"
+⚠️ Critical Pipeline Note for Low-Memory Hardware: When executing local processing profiles on 8GB machines, keep NEXORA_AI_MAX_CONCURRENT locked to 1. This forces the pipeline to stream tasks synchronously, preventing Ollama from attempting to host multiple generation contexts concurrently, which leads to hardware crashes.

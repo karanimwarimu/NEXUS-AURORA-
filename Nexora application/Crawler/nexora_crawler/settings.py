@@ -227,10 +227,27 @@ NEXORA_PARQUET_COMPRESSION = 'snappy'  # snappy | gzip | brotli | zstd
 NEXORA_PARQUET_ROW_GROUP_SIZE = 10000
 NEXORA_PARQUET_OUTPUT = './output/parquet'
 
-# ── Phase 4A: Metadata Store Settings ─────────────────────────────────────────
+# ── Phase 4b: Metadata Store Settings ─────────────────────────────────────────
 NEXORA_METADATA_DB = './data/nexora_metadata.db'
 NEXORA_VECTOR_BACKEND = "pgvector"  # pgvector | chroma | qdrant | cloudflare_vectorize
 NEXORA_DATABASE_URL = "postgresql://postgres:password@localhost:5432/nexora"
 NEXORA_EMBEDDING_DIM = 768  # nomic-embed-text: 768; OpenAI 3-small: 1536
 NEXORA_CHROMA_PATH = "./data/chroma"
+
+
+# -- Phase 4B: AI Enrichment Settings ─────────────────────────────────────────────
+NEXORA_AI_ENABLED = True # sets the global flag to enable or disable AI enrichment in the pipeline. When False, the AIEnrichmentPipeline will be skipped entirely, allowing for faster runs without AI processing.
+NEXORA_AI_PROVIDER = "ollama"           # ollama | openai | anthropic
+NEXORA_AI_MODEL = "llama3"              # llama3 | gpt-4o | claude-3-sonnet
+NEXORA_AI_EMBEDDING_MODEL = "nomic-embed-text"
+NEXORA_AI_BASE_URL = "http://localhost:11434"
+NEXORA_AI_API_KEY = "not-needed"
+NEXORA_AI_TIMEOUT = 30
+NEXORA_AI_MAX_CONCURRENT = 3
+NEXORA_EMBEDDINGS_ENABLED = True
+
+# -- Phase 4B: Chunking Settings ─────────────────────────────────────────────
+NEXORA_CHUNK_SIZE = 512 # Target tokens per chunk 
+NEXORA_CHUNK_OVERLAP = 128 #overlap tokens btwn chunks
+
 
