@@ -56,7 +56,7 @@ class StructuralChunkingPipeline:
     def from_crawler(cls, crawler):
         return cls(crawler)
 
-    async def process_item(self, item, spider):
+    async def process_item(self, item):
         markdown = item.get("markdown", "")
         if not markdown or len(markdown) < 100:
             item["chunk_count"] = 0
@@ -218,10 +218,11 @@ class StructuralChunkingPipeline:
         overlap_words = words[-min(len(words), overlap_tokens * 3):]
         return ' '.join(overlap_words)
 
-    def close_spider(self, spider):
+    def close_spider(self):
+        spider = getattr(getattr(self, "crawler", None), "spider", None)
         if self.stats["chunks_generated"] > 0:
             self.stats["avg_chunk_tokens"] = int(round(
-                sum(c.token_count for c in getattr(spider, '_chunks', [])) 
+                sum(c.token_count for c in getattr(spider, '_chunks', []))
                 / self.stats["chunks_generated"], 1
             ))
         logger.info("[Chunking] Pipeline stats: %s", self.stats)

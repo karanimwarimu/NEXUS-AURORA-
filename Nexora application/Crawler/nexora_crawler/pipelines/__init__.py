@@ -225,8 +225,11 @@ class NexoraExportPipeline(_BasePipeline):
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") # strftime is a method from the datetime module that formats a datetime object into a string representation based on the specified format. In this case, it formats the current UTC time into a string with the format "YYYYMMDDTHHMMSS" (e.g., "20230615T123456"). This timestamp is used to create unique filenames for the output files, ensuring that each file has a distinct name based on the time it was created.
         base_name = f"{domain}__{path_slug}__{ts}"
 
-        # Convert item to plain dict for serialization
+        # `chunks` holds NexoraChunk dataclass objects (in-memory only, consumed
+        # by VectorIndexPipeline). Drop it before serialization so JSON/CSV
+        # export can't break on a non-serializable field.
         data = dict(item)
+        data.pop("chunks", None)
 
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -272,16 +275,27 @@ class NexoraDatasetPipeline(_BasePipeline):
 
     def open_spider(self):
         super().open_spider()
+        self.f = None
+        self.writer = None
         dataset_dir = os.path.join(_PROJECT_ROOT, "output")
         os.makedirs(dataset_dir, exist_ok=True)
         self.dataset_path = os.path.join(dataset_dir, "master_dataset.csv")
-        self._seen_urls = set() #method from 
-        write_header = not os.path.exists(self.dataset_path)
-        self.f = open(self.dataset_path, "a", newline="", encoding="utf-8")
-        self.writer = csv.DictWriter(self.f, fieldnames=self.MASTER_FIELDS)
-        if write_header:
-            self.writer.writeheader()
-        log.info("Master dataset → %s", self.dataset_path)
+        self._seen_urls = set()  # method from
+        try:
+            write_header = not os.path.exists(self.dataset_path)
+            self.f = open(self.dataset_path, "a", newline="", encoding="utf-8")
+            self.writer = csv.DictWriter(self.f, fieldnames=self.MASTER_FIELDS)
+            if write_header:
+                self.writer.writeheader()
+            log.info("Master dataset → %s", self.dataset_path)
+        except (PermissionError, OSError) as exc:
+            # Never let a locked/unwritable dataset file kill the whole crawl.
+            self.f = None
+            self.writer = None
+            log.warning(
+                "[Dataset] Could not open %s (%s) — dataset export disabled for this run.",
+                self.dataset_path, exc,
+            )
 
     def close_spider(self):
         if getattr(self, "f", None):
@@ -292,6 +306,8 @@ class NexoraDatasetPipeline(_BasePipeline):
     async def process_item(self, item):
         """Scrapy 2.16+ async signature — no spider argument."""
         if item.get("__skip"):
+            return item
+        if not getattr(self, "writer", None):
             return item
 
         url = item.get("url", "")

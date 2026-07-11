@@ -44,12 +44,12 @@ class VectorIndexPipeline:
     def from_crawler(cls, crawler):
         return cls(crawler)
 
-    async def open_spider(self, spider):
+    async def open_spider(self):
         if self.enabled:
             await self.vector_store.initialize()
             logger.info("[VectorIndex] Backend: %s", self.vector_store.backend_name())
 
-    async def process_item(self, item, spider):
+    async def process_item(self, item):
         if not self.enabled:
             return item
 
@@ -100,5 +100,5 @@ class VectorIndexPipeline:
             ))
         return records
 
-    def close_spider(self, spider):
+    def close_spider(self):
         logger.info("[VectorIndex] Stats: %s", self.stats)

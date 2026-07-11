@@ -80,8 +80,10 @@ class ParquetExportPipeline:
                 row[f"{key}_json"] = json.dumps(row[key])
                 del row[key]
 
-        # Remove heavy text fields (stored separately in Markdown/JSON exports)
-        for key in ['html', 'markdown', 'clean_text']:
+        # Remove heavy / non-serializable fields (stored separately elsewhere)
+        # `chunks` holds NexoraChunk dataclass objects — excluded so the
+        # Arrow/Parquet conversion doesn't fail.
+        for key in ['html', 'markdown', 'clean_text', 'chunks']:
             row.pop(key, None)
 
         return row

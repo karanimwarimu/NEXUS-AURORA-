@@ -47,3 +47,10 @@ Nexora application/tests/.pytest_cache/
 .env
 .env.*
 *.local
+
+#ingore all .env files 
+**/*.env 
+.env
+.env.local
+.env.*
+!.env.example

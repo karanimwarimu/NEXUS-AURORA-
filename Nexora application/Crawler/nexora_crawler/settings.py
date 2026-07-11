@@ -138,19 +138,12 @@ ITEM_PIPELINES = {
     "nexora_crawler.pipelines.NexoraStylePipeline": 150,
     "nexora_crawler.pipelines.schema_enricher.UnifiedSchemaEnricher": 160,
     "nexora_crawler.pipelines.metadata_indexer.MetadataIndexerPipeline": 165,
-    # Phase 4B pipelines at 250+
-    "nexora_crawler.pipelines.parquet_export.ParquetExportPipeline": 450,
-    "nexora_crawler.pipelines.NexoraExportPipeline": 500,
-    "nexora_crawler.pipelines.NexoraDatasetPipeline": 600,
-   
-    'nexora_crawler.pipelines.pii_redaction_pipeline.PIIRedactionPipeline': 200,      # Phase 7
     'nexora_crawler.pipelines.ai_enrichment.AIEnrichmentPipeline': 250,            # Phase 4B
     'nexora_crawler.pipelines.chunking_pipeline.StructuralChunkingPipeline': 260,    # Phase 4B
     'nexora_crawler.pipelines.vector_index_pipeline.VectorIndexPipeline': 270,       # Phase 4B
-    'nexora_crawler.pipelines.schema_extraction_pipeline.SchemaExtractionPipeline': 280,  # Phase 7
-    'nexora_crawler.pipelines.parquet_export.ParquetExportPipeline': 450,
-    'nexora_crawler.pipelines.NexoraExportPipeline': 500,
-    'nexora_crawler.pipelines.NexoraDatasetPipeline': 600,
+    "nexora_crawler.pipelines.parquet_export.ParquetExportPipeline": 450,
+    "nexora_crawler.pipelines.NexoraExportPipeline": 500,
+    "nexora_crawler.pipelines.NexoraDatasetPipeline": 600,
 }
 
 # ── HTTP Cache (dev only — speeds up re-runs without re-fetching) ─────────────
@@ -227,23 +220,44 @@ NEXORA_PARQUET_COMPRESSION = 'snappy'  # snappy | gzip | brotli | zstd
 NEXORA_PARQUET_ROW_GROUP_SIZE = 10000
 NEXORA_PARQUET_OUTPUT = './output/parquet'
 
-# ── Phase 4b: Metadata Store Settings ─────────────────────────────────────────
-NEXORA_METADATA_DB = './data/nexora_metadata.db'
-NEXORA_VECTOR_BACKEND = "pgvector"  # pgvector | chroma | qdrant | cloudflare_vectorize
-NEXORA_DATABASE_URL = "postgresql://postgres:password@localhost:5432/nexora"
-NEXORA_EMBEDDING_DIM = 768  # nomic-embed-text: 768; OpenAI 3-small: 1536
+# ── Phase 4B: Vector Store Settings ──────────────────────────────────────────
+# Local dev uses ChromaDB (no external service). Switch to "pgvector" when a
+# Postgres+pgvector database is available (see NEXORA_DATABASE_URL below).
+NEXORA_VECTOR_BACKEND = "chroma"   # chroma | pgvector | qdrant | cloudflare_vectorize
+NEXORA_VECTOR_INDEX_ENABLED = True
 NEXORA_CHROMA_PATH = "./data/chroma"
+# pgvector (production) — only used when NEXORA_VECTOR_BACKEND="pgvector"
+NEXORA_DATABASE_URL = "postgresql://postgres:password@localhost:5432/nexora"
+NEXORA_EMBEDDING_DIM = 384  # all-MiniLM-L6-v2: 384; all-mpnet-base-v2: 768; OpenAI 3-small: 1536
+NEXORA_METADATA_DB = './data/nexora_metadata.db'
 
 
-# -- Phase 4B: AI Enrichment Settings ─────────────────────────────────────────────
-NEXORA_AI_ENABLED = True # sets the global flag to enable or disable AI enrichment in the pipeline. When False, the AIEnrichmentPipeline will be skipped entirely, allowing for faster runs without AI processing.
-NEXORA_AI_PROVIDER = "ollama"           # ollama | openai | anthropic
-NEXORA_AI_MODEL = "llama3"              # llama3 | gpt-4o | claude-3-sonnet
-NEXORA_AI_EMBEDDING_MODEL = "nomic-embed-text"
-NEXORA_AI_BASE_URL = "http://localhost:11434"
-NEXORA_AI_API_KEY = "not-needed"
-NEXORA_AI_TIMEOUT = 30
-NEXORA_AI_MAX_CONCURRENT = 3
+# ── Phase 4B: AI Enrichment Settings (Hugging Face via LiteLLM) ───────────────
+# Single source of truth for embeddings = UnifiedEmbeddingEngine (LiteLLM).
+# Provider is "huggingface" so the SAME LiteLLM abstraction also supports
+# ollama / openai / anthropic later — only these settings change.
+NEXORA_AI_ENABLED = True
+NEXORA_AI_PROVIDER = "huggingface"  # huggingface | ollama | openai | anthropic
+
+# Embedding model — 384-dim, fast/standard sentence-transformers model.
+# NOTE: With NEXORA_AI_PROVIDER="huggingface", embeddings are routed to the
+# HF router's legacy feature-extraction endpoint (NOT the OpenAI-compatible
+# /v1/embeddings, which does not support sentence-transformers models).
+# Switching models = change NEXORA_AI_EMBEDDING_MODEL + NEXORA_EMBEDDING_DIM
+# (and rebuild the vector index, since the vector dimension changes).
+NEXORA_AI_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+NEXORA_EMBEDDING_DIM = 384
+
+# Hosted free LLM for summary/tag generation (instruct-tuned, JSON-friendly)
+NEXORA_AI_MODEL = "Qwen/Qwen2.5-7B-Instruct"   # or meta-llama/Llama-3.1-8B-Instruct
+
+# Hugging Face serverless inference root (LiteLLM appends /<model_id>)
+NEXORA_AI_BASE_URL = "https://router.huggingface.co/v1"
+# Reads NEXORA_AI_API_KEY from .env, else falls back to the HF_TOKEN env var.
+NEXORA_AI_API_KEY = os.getenv("NEXORA_AI_API_KEY", "") or os.getenv("HF_TOKEN", "")
+
+NEXORA_AI_TIMEOUT = 60
+NEXORA_AI_MAX_CONCURRENT = 2
 NEXORA_EMBEDDINGS_ENABLED = True
 
 # -- Phase 4B: Chunking Settings ─────────────────────────────────────────────

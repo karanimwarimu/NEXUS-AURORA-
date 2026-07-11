@@ -28,7 +28,10 @@ class ChromaVectorStore(BaseVectorStore):
 
     def __init__(self, path: str = "./data/chroma", collection_name: str = "nexora_chunks"):
         import chromadb
-        from chromadb.config import Settings
+        try:
+            from chromadb.config import Settings  # chromadb < 0.5
+        except ImportError:
+            from chromadb.settings import Settings  # chromadb >= 0.5
 
         self._path = path
         self._collection_name = collection_name
@@ -42,9 +45,10 @@ class ChromaVectorStore(BaseVectorStore):
 
     async def initialize(self) -> None:
         """Create or get collection. Idempotent."""
+        import chromadb
         try:
             self._collection = self._client.get_collection(self._collection_name)
-        except ValueError:
+        except (ValueError, chromadb.errors.NotFoundError):
             self._collection = self._client.create_collection(
                 name=self._collection_name,
                 metadata={"hnsw:space": "cosine"},

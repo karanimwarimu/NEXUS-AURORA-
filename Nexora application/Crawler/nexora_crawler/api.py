@@ -196,31 +196,46 @@ async def list_jobs():
 # ── Internal Crawl Runner ──────────────────────────────────────────────────
 
 async def _run_crawl(job_id: str, url: str, strategy: str, max_pages: int):
-    """Execute Scrapy crawl asynchronously."""
+    """Execute a Scrapy crawl as an isolated subprocess.
+
+    Runs each job in its own process so:
+      - a crash in one crawl can't take down the API server,
+      - repeated jobs work (Twisted's reactor can only start once per process),
+      - logs stream live to the server console.
+
+    The api.py script is invoked directly with _PROJECT_ROOT on PYTHONPATH so
+    the nexora_crawler package resolves from any working directory.
+    """
+    import subprocess
+    import sys
+
     job = _jobs[job_id]
     log.info("[%s] Starting crawl: %s | strategy=%s", job_id, url, strategy)
 
+    api_script = os.path.join(_PROJECT_ROOT, "nexora_crawler", "api.py")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = _PROJECT_ROOT + os.pathsep + env.get("PYTHONPATH", "")
+
+    cmd = [
+        sys.executable, api_script,
+        "--url", url, "--strategy", strategy, "--max-pages", str(max_pages),
+    ]
     try:
-        # Build Scrapy settings
-        settings = get_project_settings()
-        settings.set("LOG_LEVEL", "INFO")
-
-        process = CrawlerProcess(settings)
-        process.crawl(
-            "nexora",
-            urls=url,
-            strategy=strategy,
-            max_pages=max_pages,
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            env=env,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
         )
-
-        # Run in thread pool (Scrapy is synchronous internally)# the main heat is here 
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, process.start, False)
-
-        job.status = "completed"
+        await proc.wait()
         job.completed_at = datetime.now().isoformat()
-        job.message = "Crawl completed successfully"
-        log.info("[%s] Crawl completed", job_id)
+        if proc.returncode == 0:
+            job.status = "completed"
+            job.message = "Crawl completed successfully"
+        else:
+            job.status = "failed"
+            job.message = f"Crawl exited with code {proc.returncode}"
+        log.info("[%s] Crawl finished (code=%s)", job_id, proc.returncode)
 
     except Exception as exc:
         job.status = "failed"
@@ -316,23 +331,73 @@ def _prompt_max_pages() -> int:
         return default
 
 
+def _run_crawl_subprocess(url: str, strategy: str, max_pages: int) -> int:
+    """
+    Run a single crawl in a *separate process* (fresh Twisted reactor each time).
+
+    Why a subprocess: Scrapy's Twisted reactor can only be started once per
+    process, and a crash inside an in-process crawl would kill this loop/server.
+    Isolating each crawl means a finished or failed task never terminates the
+    parent, and repeated runs work cleanly.
+
+    Path handling: we run the api.py script directly and inject _PROJECT_ROOT
+    into PYTHONPATH so the nexora_crawler package is importable regardless of
+    the current working directory the parent was launched from.
+    """
+    import subprocess
+    import sys
+
+    api_script = os.path.join(_PROJECT_ROOT, "nexora_crawler", "api.py")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = _PROJECT_ROOT + os.pathsep + env.get("PYTHONPATH", "")
+
+    cmd = [
+        sys.executable, api_script,
+        "--url", url, "--strategy", strategy, "--max-pages", str(max_pages),
+    ]
+    log.info("[cli] spawning crawl subprocess: %s", " ".join(cmd))
+    result = subprocess.run(cmd, check=False, env=env)
+    return result.returncode
+
+
 def run_cli_interactive():
-    """Interactive CLI entrypoint with prompts."""
+    """Interactive CLI REPL — prompt, crawl, then ask to run another.
+
+    Each crawl runs in its own subprocess (see _run_crawl_subprocess), so a
+    finished or failed task never terminates this loop. Ctrl+C to quit.
+    """
     _print_banner()
+    print("Interactive crawl loop — Ctrl+C to quit.\n")
 
-    url = _prompt_url()
-    strategy = _prompt_strategy()
-    max_pages = _prompt_max_pages()
+    while True:
+        try:
+            url = _prompt_url()
+            strategy = _prompt_strategy()
+            max_pages = _prompt_max_pages()
 
-    print(f"\n⚙️  Configuration:")
-    print(f"   URL      : {url}")
-    print(f"   Strategy : {STRATEGY_DESCRIPTIONS[strategy]['name']}")
-    print(f"   Max pages: {max_pages}")
-    print(f"\n🚀 Starting crawl...\n")
+            print(f"\n⚙️  Configuration:")
+            print(f"   URL      : {url}")
+            print(f"   Strategy : {STRATEGY_DESCRIPTIONS[strategy]['name']}")
+            print(f"   Max pages: {max_pages}")
+            print(f"\n🚀 Starting crawl...\n")
 
-    _run_crawl_sync(url, strategy, max_pages)
+            code = _run_crawl_subprocess(url, strategy, max_pages)
+            if code == 0:
+                print("\n✅ Crawl finished. Check output/ directory for results.")
+            else:
+                print(f"\n❌ Crawl exited with errors (code {code}). See log above.")
 
-    print("\n✅ Crawl finished. Check output/ directory for results.")
+        except KeyboardInterrupt:
+            print("\n👋 Exiting Nexora.")
+            break
+        except Exception as exc:
+            log.error("[cli] unexpected error: %s", exc)
+            print(f"\n❌ Error: {exc}")
+
+        again = input("\n🔁 Run another crawl? [y/N]: ").strip().lower()
+        if again not in ("y", "yes"):
+            print("👋 Goodbye.")
+            break
 
 
 def run_cli_direct(url: str, strategy: str, max_pages: int):

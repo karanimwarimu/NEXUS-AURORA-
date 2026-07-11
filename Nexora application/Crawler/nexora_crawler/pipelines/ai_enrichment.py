@@ -63,7 +63,7 @@ class AIEnrichmentPipeline:
     def from_crawler(cls, crawler):
         return cls(crawler)
 
-    async def process_item(self, item, spider):
+    async def process_item(self, item) -> dict:
         if not self.enabled:
             return item
 
@@ -73,25 +73,42 @@ class AIEnrichmentPipeline:
 
         try:
             async with self.semaphore:
-                # Run summary, tags, and embedding in parallel
-                tasks = []
-                tasks.append(self._generate_summary(markdown))
-                tasks.append(self._generate_tags(markdown))
-
+                # Run summary, tags, and embedding in parallel.
+                # return_exceptions=True => if one call fails (e.g. HF host
+                # unreachable), the others still complete instead of the whole
+                # batch being cancelled. This keeps the pipeline flowing even
+                # when the AI/embedding backend is down.
+                tasks = [self._generate_summary(markdown), self._generate_tags(markdown)]
                 if self.embeddings_enabled and self.embedding_engine:
                     tasks.append(self.embedding_engine.embed(markdown[:4000]))
                 else:
                     tasks.append(asyncio.sleep(0))
 
-                summary, tags, embedding = await asyncio.gather(*tasks)
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
+            summary, tags, embedding = results
+
+            if isinstance(summary, Exception):
+                logger.warning("[AI] Summary generation failed: %s", summary)
+                self.stats["ai_errors"] += 1
+            else:
                 item["ai_summary"] = summary
+
+            if isinstance(tags, Exception):
+                logger.warning("[AI] Tag generation failed: %s", tags)
+                self.stats["ai_errors"] += 1
+            else:
                 item["ai_tags"] = tags
-                if embedding:
-                    item["ai_embedding"] = embedding
-                    self.stats["embeddings_generated"] += 1
+
+            if isinstance(embedding, Exception):
+                logger.warning("[AI] Embedding generation failed: %s", embedding)
+                self.stats["ai_errors"] += 1
+            elif embedding:
+                item["ai_embedding"] = embedding
+                self.stats["embeddings_generated"] += 1
 
         except Exception as exc:
+            # Last-resort guard — a AI failure must never stop the crawl.
             logger.warning("[AI] Enrichment failed for %s: %s",
                           item.get("url", "unknown"), exc)
             self.stats["ai_errors"] += 1
@@ -156,7 +173,7 @@ class AIEnrichmentPipeline:
             logger.warning("[AI] Tag generation failed: %s", exc)
             return []
 
-    def close_spider(self, spider):
+    def close_spider(self):
         logger.info("[AI] Pipeline stats: %s", self.stats)
         if self.embedding_engine:
             logger.info("[EmbeddingEngine] Stats: %s", self.embedding_engine.get_stats())
