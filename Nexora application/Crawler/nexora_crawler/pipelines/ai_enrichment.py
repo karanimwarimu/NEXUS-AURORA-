@@ -115,13 +115,29 @@ class AIEnrichmentPipeline:
 
         return item
 
+    @staticmethod
+    def _truncate_text(text: str, limit: int) -> str:
+        """Truncate at the last paragraph/sentence boundary <= limit.
+
+        Avoids cutting mid-word (or mid-token), which can corrupt JSON tag
+        extraction or leave a half-word for the summarizer.
+        """
+        if len(text) <= limit:
+            return text
+        head = text[:limit]
+        for boundary in ("\n\n", "\n", ". ", "! ", "? "):
+            idx = head.rfind(boundary)
+            if idx > 0:
+                return head[:idx].rstrip()
+        return head
+
     async def _generate_summary(self, text: str) -> str:
         """Generate a 2-3 sentence semantic summary via LiteLLM."""
         prompt = f"""Summarize the following web page content in 2-3 sentences.
         Be concise and capture the main points.
 
         Content:
-        {text[:4000]}
+        {self._truncate_text(text, 4000)}
 
         Summary:"""
 
@@ -147,7 +163,7 @@ class AIEnrichmentPipeline:
          Return ONLY a JSON array of strings, no other text.
 
             Content:
-            {text[:3000]}
+            {self._truncate_text(text, 3000)}
 
             Tags (JSON array):"""
 

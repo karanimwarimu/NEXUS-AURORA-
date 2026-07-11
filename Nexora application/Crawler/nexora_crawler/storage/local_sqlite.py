@@ -78,7 +78,33 @@ class MetadataStore:
                 );
             """)
             conn.commit()
+        # Non-destructive migration for databases created before the
+        # `markdown` column existed (they used `markdown_preview`).
+        self._migrate_schema(conn)
         logger.info("[MetadataStore] Schema initialized at %s", self.db_path)
+
+    def _migrate_schema(self, conn):
+        """Reconcile the `pages` table with the current schema without data loss.
+
+        Handles the rename markdown_preview -> markdown (Step 2 of the rework):
+        old DBs still expose `markdown_preview`, which breaks insert_page's
+        reference to `markdown`.
+        """
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(pages)").fetchall()}
+        if "markdown" in cols:
+            return
+        if "markdown_preview" in cols:
+            try:
+                conn.execute("ALTER TABLE pages RENAME COLUMN markdown_preview TO markdown")
+                logger.info("[MetadataStore] Migrated markdown_preview -> markdown")
+            except sqlite3.OperationalError:
+                conn.execute("ALTER TABLE pages ADD COLUMN markdown TEXT")
+                conn.execute("UPDATE pages SET markdown = markdown_preview")
+                logger.info("[MetadataStore] Added markdown column (copied from markdown_preview)")
+        else:
+            conn.execute("ALTER TABLE pages ADD COLUMN markdown TEXT")
+            logger.info("[MetadataStore] Added markdown column")
+        conn.commit()
 
     def insert_page(self, item: dict) -> bool:
         try:

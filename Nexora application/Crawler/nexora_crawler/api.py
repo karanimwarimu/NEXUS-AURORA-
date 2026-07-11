@@ -57,6 +57,18 @@ if not log.handlers:
 log.setLevel(logging.INFO)
 
 
+# ── Enrichment mode helper ─────────────────────────────────────────────────
+# Mirrors the gate in settings.py: "eager" runs enrichment inline during the
+# crawl; "on_demand" defers it to the offline `enrich.py` command.
+_VALID_ENRICH_MODES = ("eager", "on_demand")
+
+
+def _normalize_enrich_mode(mode) -> str | None:
+    """Return a valid enrichment mode string, or None to use the default."""
+    if mode and str(mode).lower() in _VALID_ENRICH_MODES:
+        return str(mode).lower()
+    return None
+
 
 # ── Pydantic Models ────────────────────────────────────────────────────────
 
@@ -70,6 +82,14 @@ class CrawlRequest(BaseModel):
         "everything",
     ] = Field(default="single-page", description="Crawl depth strategy")
     max_pages: int = Field(default=100, ge=1, le=50000, description="Safety cap on pages")
+    enrich_mode: Literal["eager", "on_demand"] | None = Field(
+        default=None,
+        description=(
+            "When AI enrichment (summary/tags/vectors) runs. "
+            "'eager' = inline during the crawl; 'on_demand' = deferred to the "
+            "offline `enrich.py` command. Omit to use the server default."
+        ),
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -89,6 +109,7 @@ class CrawlResponse(BaseModel):
     url: str
     strategy: str
     mode: str
+    enrich_mode: str | None = None
     pages_crawled: int
     output_dir: str
     started_at: str
@@ -166,6 +187,7 @@ async def start_crawl(request: CrawlRequest):
         url=url_str,
         strategy=request.strategy,
         mode=strategy_cfg["mode"],
+        enrich_mode=request.enrich_mode,
         pages_crawled=0,
         output_dir="output/",
         started_at=datetime.now().isoformat(),
@@ -174,7 +196,9 @@ async def start_crawl(request: CrawlRequest):
     _jobs[job_id] = job
 
     # Run crawl in background (non-blocking)
-    asyncio.create_task(_run_crawl(job_id, url_str, request.strategy, request.max_pages))
+    asyncio.create_task(
+        _run_crawl(job_id, url_str, request.strategy, request.max_pages, request.enrich_mode)
+    )
 
     return job
 
@@ -195,7 +219,8 @@ async def list_jobs():
 
 # ── Internal Crawl Runner ──────────────────────────────────────────────────
 
-async def _run_crawl(job_id: str, url: str, strategy: str, max_pages: int):
+async def _run_crawl(job_id: str, url: str, strategy: str, max_pages: int,
+                   enrich_mode: str | None = None):
     """Execute a Scrapy crawl as an isolated subprocess.
 
     Runs each job in its own process so:
@@ -210,16 +235,24 @@ async def _run_crawl(job_id: str, url: str, strategy: str, max_pages: int):
     import sys
 
     job = _jobs[job_id]
-    log.info("[%s] Starting crawl: %s | strategy=%s", job_id, url, strategy)
+    log.info("[%s] Starting crawl: %s | strategy=%s | enrich_mode=%s",
+             job_id, url, strategy, enrich_mode)
 
     api_script = os.path.join(_PROJECT_ROOT, "nexora_crawler", "api.py")
     env = os.environ.copy()
     env["PYTHONPATH"] = _PROJECT_ROOT + os.pathsep + env.get("PYTHONPATH", "")
+    # Forward the chosen enrichment mode into the child process. The child
+    # re-imports settings.py, which reads NEXORA_ENRICH_MODE at import time.
+    _norm = _normalize_enrich_mode(enrich_mode)
+    if _norm:
+        env["NEXORA_ENRICH_MODE"] = _norm
 
     cmd = [
         sys.executable, api_script,
         "--url", url, "--strategy", strategy, "--max-pages", str(max_pages),
     ]
+    if _norm:
+        cmd += ["--enrich-mode", _norm]
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -331,7 +364,8 @@ def _prompt_max_pages() -> int:
         return default
 
 
-def _run_crawl_subprocess(url: str, strategy: str, max_pages: int) -> int:
+def _run_crawl_subprocess(url: str, strategy: str, max_pages: int,
+                           enrich_mode: str | None = None) -> int:
     """
     Run a single crawl in a *separate process* (fresh Twisted reactor each time).
 
@@ -350,14 +384,34 @@ def _run_crawl_subprocess(url: str, strategy: str, max_pages: int) -> int:
     api_script = os.path.join(_PROJECT_ROOT, "nexora_crawler", "api.py")
     env = os.environ.copy()
     env["PYTHONPATH"] = _PROJECT_ROOT + os.pathsep + env.get("PYTHONPATH", "")
+    # Forward the chosen enrichment mode. The child re-imports settings.py,
+    # which reads NEXORA_ENRICH_MODE at import time.
+    _norm = _normalize_enrich_mode(enrich_mode)
+    if _norm:
+        env["NEXORA_ENRICH_MODE"] = _norm
 
     cmd = [
         sys.executable, api_script,
         "--url", url, "--strategy", strategy, "--max-pages", str(max_pages),
     ]
-    log.info("[cli] spawning crawl subprocess: %s", " ".join(cmd))
+    if _norm:
+        cmd += ["--enrich-mode", _norm]
+    log.info("[cli] spawning crawl subprocess: %s (enrich_mode=%s)", " ".join(cmd), _norm)
     result = subprocess.run(cmd, check=False, env=env)
     return result.returncode
+
+
+def _prompt_enrich_mode() -> str | None:
+    """Prompt for enrichment timing; Enter = use server default."""
+    print("\n🧠 Enrichment mode (when AI summary/tags/vectors run):")
+    print("   1. on_demand (default) — fast crawl, enrich later via `enrich.py`")
+    print("   2. eager — enrich inline during the crawl (slower)")
+    choice = input("Enter choice [1/2, blank=default]: ").strip()
+    if choice == "2":
+        return "eager"
+    if choice == "1":
+        return "on_demand"
+    return None
 
 
 def run_cli_interactive():
@@ -374,14 +428,16 @@ def run_cli_interactive():
             url = _prompt_url()
             strategy = _prompt_strategy()
             max_pages = _prompt_max_pages()
+            enrich_mode = _prompt_enrich_mode()
 
             print(f"\n⚙️  Configuration:")
             print(f"   URL      : {url}")
             print(f"   Strategy : {STRATEGY_DESCRIPTIONS[strategy]['name']}")
             print(f"   Max pages: {max_pages}")
+            print(f"   Enrich   : {enrich_mode or 'default (on_demand)'}")
             print(f"\n🚀 Starting crawl...\n")
 
-            code = _run_crawl_subprocess(url, strategy, max_pages)
+            code = _run_crawl_subprocess(url, strategy, max_pages, enrich_mode)
             if code == 0:
                 print("\n✅ Crawl finished. Check output/ directory for results.")
             else:
@@ -400,11 +456,22 @@ def run_cli_interactive():
             break
 
 
-def run_cli_direct(url: str, strategy: str, max_pages: int):
+def run_cli_direct(url: str, strategy: str, max_pages: int, enrich_mode: str | None = None):
     """Direct CLI entrypoint (no prompts, for scripting)."""
+    # settings.py is imported at module load (before argparse reads --enrich-mode),
+    # so re-evaluate it now that the env var is known. The subprocess paths don't
+    # need this because the child re-imports settings with the inherited env.
+    _norm = _normalize_enrich_mode(enrich_mode)
+    if _norm:
+        import importlib
+        import nexora_crawler.settings as _settings_mod
+        os.environ["NEXORA_ENRICH_MODE"] = _norm
+        importlib.reload(_settings_mod)
+
     print(f"🚀 Starting crawl: {url}")
     print(f"   Strategy : {STRATEGY_DESCRIPTIONS[strategy]['name']}")
-    print(f"   Max pages: {max_pages}\n")
+    print(f"   Max pages: {max_pages}")
+    print(f"   Enrich   : {_norm or 'default (on_demand)'}\n")
 
     _run_crawl_sync(url, strategy, max_pages)
 
@@ -472,6 +539,11 @@ Examples:
         "--max-pages", type=int, default=1000,
         help="Max pages cap (default: 1000)"
     )
+    parser.add_argument(
+        "--enrich-mode", default=None, choices=list(_VALID_ENRICH_MODES),
+        help="When AI enrichment runs: 'eager' inline, 'on_demand' deferred "
+             "to enrich.py (default: server setting -> on_demand)"
+    )
 
     args = parser.parse_args()
 
@@ -499,7 +571,7 @@ Examples:
 
     # ── Mode 2: Direct CLI (no prompts) ──────────────────────────────────
     if args.url:
-        run_cli_direct(args.url, args.strategy, args.max_pages)
+        run_cli_direct(args.url, args.strategy, args.max_pages, args.enrich_mode)
         return
 
     # ── Mode 3: Interactive CLI (default) ────────────────────────────────

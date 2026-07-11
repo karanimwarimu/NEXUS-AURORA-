@@ -104,5 +104,6 @@ class NexoraPageItem(scrapy.Item):
     chunk_count = scrapy.Field()          # int — number of chunks
     chunk_ids = scrapy.Field()            # list[str] — chunk UUIDs
     has_embedding = scrapy.Field()        # bool — embedding generated flag
-    chunks = scrapy.Field()               # list[NexoraChunk] — in-memory chunk
+    vector_backend = scrapy.Field()        # str — which vector store indexed this page
+    chunks = scrapy.Field()                # list[NexoraChunk] — in-memory chunk
                                            # objects; consumed by VectorIndexPipeline
