@@ -26,6 +26,7 @@ class NexoraChunk:
     token_count: int = 0
     word_count: int = 0
     heading_chain: List[str] = field(default_factory=list)
+    source_type: str = "chunk"  # matches VectorRecord.source_type; a NexoraChunk is always a "chunk"
 
     # Inherit from parent record
     ai_summary: str = ""

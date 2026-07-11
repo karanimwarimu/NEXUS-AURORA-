@@ -55,6 +55,8 @@ class VectorIndexPipeline:
 
         chunks = item.get("chunks", [])
         if not chunks:
+            logger.debug("[VectorIndex] %s: no chunks (markdown too short?)",
+                        item.get("url", ""))
             return item
 
         try:
@@ -66,6 +68,13 @@ class VectorIndexPipeline:
                 self.stats["pages_indexed"] += 1
                 item["has_embedding"] = True
                 item["vector_backend"] = self.vector_store.backend_name()
+                logger.info("[VectorIndex] %s → indexed %d/%d chunks",
+                            item.get("url", "")[:60], len(records), len(chunks))
+            else:
+                logger.warning(
+                    "[VectorIndex] %s: %d chunks but 0 had embeddings "
+                    "(embedding engine returned None?)",
+                    item.get("url", "")[:60], len(chunks))
 
         except Exception as exc:
             logger.error("[VectorIndex] Failed for %s: %s",

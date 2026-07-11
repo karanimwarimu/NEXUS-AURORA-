@@ -62,12 +62,20 @@ class ChromaVectorStore(BaseVectorStore):
         ids = [r.id for r in records]
         embeddings = [r.embedding for r in records]
         documents = [r.content[:5000] for r in records]
-        metadatas = [{
-            "workspace_id": r.workspace_id,
-            "source_type": r.source_type,
-            "source_id": r.source_id or "",
-            **_json(r.metadata),
-        } for r in records]
+        metadatas = []
+        for r in records:
+            # Chroma only allows scalar metadata values; stringify any
+            # list/dict fields (e.g. ai_tags, heading_chain) for storage.
+            meta = {
+                k: (_json(v) if isinstance(v, (list, dict)) else v)
+                for k, v in r.metadata.items()
+            }
+            metadatas.append({
+                "workspace_id": r.workspace_id,
+                "source_type": r.source_type,
+                "source_id": r.source_id or "",
+                **meta,
+            })
 
         self._collection.add(
             ids=ids,
