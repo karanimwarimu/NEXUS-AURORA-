@@ -22,3 +22,10 @@ pytest>=7.4.0
 httpx>=0.27.0
 scrapy-playwright>=0.0.40
 playwright>=1.48.0
+
+# Phase 4B: AI enrichment, embeddings, chunking, vector indexing
+litellm>=1.40.0
+chromadb>=0.5.0
+# requests==2.32.3 (declared above) — used by UnifiedEmbeddingEngine HF legacy endpoint
+# Optional: huggingface_hub — used by pipelines/test_ai_direct_hf.py
+# huggingface_hub>=0.24.0

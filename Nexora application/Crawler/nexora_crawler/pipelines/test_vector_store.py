@@ -60,7 +60,8 @@ async def main():
     sample = await store.list_all(limit=5)
     print(f"\n  --- stored records (first {len(sample)}) ---")
     for r in sample:
-        dim = len(r.embedding) if r.embedding else 0
+        emb = r.embedding
+        dim = len(emb) if emb is not None else 0  # chroma returns np arrays; avoid truthiness
         print(f"   id={r.id[:36]}... source={r.source_type} dim={dim}")
         print(f"      content: {r.content[:80]!r}")
         print(f"      meta  : parent_title={r.metadata.get('parent_title')!r} "
@@ -69,6 +70,8 @@ async def main():
     # --- Round-trip: use a STORED embedding as the query (offline proof) ---
     q = sample[0]
     qvec = q.embedding
+    if hasattr(qvec, "tolist"):  # chroma returns numpy arrays
+        qvec = qvec.tolist()
     print(f"\n=== Round-trip search (query = stored chunk {q.id[:8]}...) ===")
     results = await store.search(SearchQuery(
         vector=qvec,

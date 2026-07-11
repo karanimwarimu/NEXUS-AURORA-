@@ -1,18 +1,18 @@
-# NEXUS AURORA v4.1.0
+# NEXUS AURORA v4.2.1
 
-> AI-powered website intelligence platform with static-first routing, browser-aware extraction, multi-format storage engine, and hardened crawl safety for production-grade web intelligence workflows.
+> AI-powered website intelligence platform with static-first routing, browser-aware extraction, multi-format storage engine, AI enrichment, and vector indexing for production-grade RAG and web intelligence workflows.
 
-[![Version](https://img.shields.io/badge/version-4.1.0-blue)]()
+[![Version](https://img.shields.io/badge/version-4.2.1-blue)]()
 [![Python](https://img.shields.io/badge/python-3.11+-green)]()
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
-[![Status](https://img.shields.io/badge/status-phase%204A%20storage-brightgreen)]()
+[![Status](https://img.shields.io/badge/status-phase%204B%20vector%20indexing-brightgreen)]()
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [What's New in v4.1.0](#whats-new-in-v410)
+- [What's New in v4.2.1](#whats-new-in-v421)
 - [Features](#features)
 - [Architecture](#architecture)
   - [Complete Pipeline Chain](#complete-pipeline-chain)
@@ -25,11 +25,12 @@
   - [Phase 2.6 — Interactive CLI & API](#phase-26--interactive-cli--api)
   - [Phase 3 — Dynamic Detection Middleware](#phase-3--dynamic-detection-middleware)
   - [Phase 4A — Storage & Multi-Format Export](#phase-4a--storage--multi-format-export)
-  - [Benchmark Suite](#benchmark-suite)
+  - [Phase 4B — AI Enrichment & Vector Indexing](#phase-4b--ai-enrichment--vector-indexing)
 - [Crawl Strategies](#crawl-strategies)
 - [Output Format](#output-format)
 - [Configuration](#configuration)
-- [Testing](#testing)
+- [Testing & Verification](#testing--verification)
+- [Switching Models / Providers / Backends](#switching-models--providers--backends)
 - [Development Roadmap](#development-roadmap)
 - [Known Limitations](#known-limitations)
 - [License](#license)
@@ -40,23 +41,25 @@
 
 **NEXUS AURORA** (codename: **Nexora**) is a Python web intelligence pipeline with an intelligent **static-first routing engine** and a **multi-format storage infrastructure**. It probes each URL via lightweight HTTP, decides if JavaScript rendering is needed using 8 detection signals, routes accordingly — saving 150-300MB RAM per page for static sites — then transforms raw HTML into clean, structured, multi-format outputs for human analysts, ML pipelines, and RAG systems.
 
-> **Current Phase: 4A (v4.1.0)** — Storage & Multi-Format Ingestion Engine with Markdown extraction, multimodal asset isolation, unified schema enforcement, SQLite metadata indexing, and compressed Parquet export.
+On top of the Phase 4A storage engine, **v4.2.1 completes Phase 4B**: per-page AI summarization and tagging, sentence-transformers embeddings via the Hugging Face router, structural chunking, and vector indexing into Chroma (local) or pgvector/Supabase (production) — all behind a provider-agnostic interface so the embedding model, AI provider, and vector backend are **settings-only changes**.
+
+> **Current Phase: 4B (v4.2.1)** — AI enrichment, embeddings, chunking, and vector indexing are implemented and verified end-to-end (124 records indexed in a live Chroma run).
 
 ---
 
-## What's New in v4.1.0
+## What's New in v4.2.1
 
 | Feature | Description |
 |---------|-------------|
-| **MarkdownExtractionPipeline** | Scrapy pipeline (Priority 110) converting raw HTML to clean, LLM-ready Markdown via Trafilatura with >50% token reduction |
-| **MultimodalAssetExtractor** | Isolates images and videos from HTML with structured metadata (src, alt, dimensions, hero detection, embed platform) |
-| **UnifiedSchemaEnricher** | Scrapy pipeline (Priority 160) enforcing the NexoraRecord schema with defaults, website_type classification (e-commerce, blog, docs, article, unknown) |
-| **MetadataIndexerPipeline** | Scrapy pipeline (Priority 165) persisting items to SQLite MetadataStore |
-| **ParquetExportPipeline** | Scrapy pipeline (Priority 450) buffering and flushing compressed Apache Parquet files (snappy/gzip/zstd/brotli) |
-| **SQLite MetadataStore** | Relational storage with `pages` and `crawl_jobs` tables, indexed by domain, crawl_id, website_type, timestamp, language |
-| **Unified Schema Dataclass** | `NexoraRecord` — canonical data shape with typed sub-classes (EntityExtraction, QualityScores, StyleAnalysis) |
-| **Phase 4A Test Suite** | 18 automated tests covering all 12 specification test cases (100% pass rate) |
-| **One Crawl → Multiple Formats** | Raw HTML → Markdown + JSON/CSV + Parquet + SQLite from a single crawl job |
+| **AIEnrichmentPipeline** | Scrapy pipeline (Priority 250) generating a 2-3 sentence LLM summary + 3-5 topic tags per page, plus a page-level embedding |
+| **UnifiedEmbeddingEngine** | Provider-aware embedding generator (`AI_Utilities/embedding_engine.py`). `huggingface` → HF router legacy `feature-extraction` endpoint; other providers (ollama/openai/…) → LiteLLM `aembedding` |
+| **StructuralChunkingPipeline** | Scrapy pipeline (Priority 260) splitting Markdown into ~512-token semantic chunks; chunks inherit the page `ai_summary`, `ai_tags`, and `ai_embedding` |
+| **VectorIndexPipeline** | Scrapy pipeline (Priority 270) converting `NexoraChunk` → `VectorRecord` and persisting via `BaseVectorStore` |
+| **Vector Store Layer** | `BaseVectorStore` contract + `ChromaVectorStore` (local dev) + `PgVectorStore` (Supabase/Postgres), selected by `build_vector_store()` factory |
+| **Default embedding model** | `sentence-transformers/all-MiniLM-L6-v2` (384-dim) via the HF router — fast, free, serverless |
+| **Verification scripts** | `test_ai.py`, `test_ai_direct_hf.py` (connectivity), `test_vector_store.py` (proves embeddings are stored & retrieveable in Chroma) |
+| **Model-switch guide** | `Project Tools/switch_model_guide.md` — change model/provider/backend with zero code changes |
+| **Bug fixes** | Added missing `NexoraChunk.source_type`; fixed `ChromaVectorStore.add()` metadata serialization; synced `.env` to `settings.py` |
 
 ---
 
@@ -84,7 +87,7 @@
 - **SPA mount point detection** — Catches framework-agnostic SPA shells
 - **24-hour profile cache** — SQLite-backed, TTL-based re-probe
 
-### Phase 4A — Multi-Format Storage Engine (NEW)
+### Phase 4A — Multi-Format Storage Engine
 - **Markdown extraction** — HTML → clean Markdown with >50% token reduction
 - **Multimodal asset isolation** — Structured metadata for images and videos (no binary download)
 - **Unified schema** — Every record has entities, style_analysis, quality_scores with guaranteed defaults
@@ -93,10 +96,12 @@
 - **Parquet export** — Columnar, compressed storage for ML pipelines (snappy compression, < 30% of equivalent JSON)
 - **One crawl → multiple formats** — Markdown + JSON + CSV + Parquet + SQLite from a single pass
 
-### Benchmarking
-- **50-site benchmark** across 8 categories with confusion matrix
-- **Per-category accuracy metrics**
-- **18-test Phase 4A suite** covering all storage components
+### Phase 4B — AI Enrichment & Vector Indexing (NEW)
+- **AI summary + tags** — LLM-generated per page (LiteLLM against the HF router)
+- **Embeddings** — sentence-transformers vectors via the HF router's legacy `feature-extraction` endpoint (the OpenAI-compatible `/v1/embeddings` does **not** support ST models)
+- **Structural chunking** — Markdown split at heading/paragraph boundaries with overlap
+- **Vector store** — Chroma (local) or pgvector/Supabase (production), behind one interface
+- **Provider-agnostic** — switch embedding model, AI provider, or vector backend via settings only
 
 ---
 
@@ -126,15 +131,18 @@
                ┌──────────────────────────────────────┐
                │  ┌──────────────────────────────────┐ │
                │  │ PHASE 4A — STORAGE ENGINE        │ │
-               │  │                                  │ │
                │  │ [110] → MarkdownExtraction       │ │
-               │  │       + MultimodalAssetExtractor │ │
                │  │ [150] → NexoraStylePipeline      │ │
                │  │ [160] → UnifiedSchemaEnricher    │ │
                │  │ [165] → MetadataIndexerPipeline  │ │
-               │  │ [250] → Phase 4B pipelines       │ │
-               │  │ [450] → ParquetExportPipeline    │ │
                │  └──────────────────────────────────┘ │
+               │  ┌──────────────────────────────────┐ │
+               │  │ PHASE 4B — AI ENRICHMENT         │ │
+               │  │ [250] → AIEnrichmentPipeline     │ │  summary + tags + embedding
+               │  │ [260] → StructuralChunkingPipeline│ │  Markdown → chunks
+               │  │ [270] → VectorIndexPipeline       │ │  chunks → vector store
+               │  └──────────────────────────────────┘ │
+               │  [450] → ParquetExportPipeline       │
                └──────────────────┬───────────────────┘
                                   │
                                   ▼
@@ -145,10 +153,10 @@
                └──────────────────────────────────────┘
                                   │
                                   ▼
-            ┌────────────┬────────────┬────────────┐
-            ▼            ▼            ▼            ▼
-         Markdown    JSON/CSV    Parquet      SQLite
-         (LLM)      (Inspect)   (ML/BI)     (Metadata)
+            ┌────────────┬────────────┬────────────┬────────────┐
+            ▼            ▼            ▼            ▼            ▼
+         Markdown    JSON/CSV    Parquet      SQLite      Vector Store
+         (LLM)      (Inspect)   (ML/BI)     (Metadata)   (Chroma/pgvector)
 ```
 
 ### 8-Signal Decision Tree
@@ -198,19 +206,34 @@ NEXUS AURORA/
 ├── README.md
 ├── REPOSITORY_STRUCTURE.md
 ├── Nexora application/                     ← Main application source
-│   ├── requirements.txt
-│   ├── Crawler/                            Scrapy project with Phases 1-4A
+│   ├── application documents/
+│   │   └── requirements.txt
+│   ├── Crawler/                            Scrapy project with Phases 1-4B
 │   │   └── nexora_crawler/
+│   │       ├── AI_Utilities/
+│   │       │   └── embedding_engine.py          ★ Phase 4B: provider-aware embeddings
 │   │       ├── middlewares/
 │   │       │   ├── dynamic_detection.py          ★ Phase 3 core engine
 │   │       │   ├── exponential_backoff.py
-│   │       │   └── playwright_cleanup.py
-│   │       ├── pipelines/                        ★ Phase 4A modular pipelines
+│   │       │   ├── playwright_cleanup.py
+│   │       │   └── playwright_resource_blocker.py
+│   │       ├── pipelines/                        ★ Phase 4A + 4B modular pipelines
 │   │       │   ├── __init__.py                   Phase 1-3 pipelines
 │   │       │   ├── markdown_pipeline.py          ★ Phase 4A
 │   │       │   ├── schema_enricher.py            ★ Phase 4A
 │   │       │   ├── metadata_indexer.py           ★ Phase 4A
-│   │       │   └── parquet_export.py             ★ Phase 4A
+│   │       │   ├── parquet_export.py             ★ Phase 4A
+│   │       │   ├── ai_enrichment.py              ★ Phase 4B: summary + tags + embedding
+│   │       │   ├── chunking_pipeline.py          ★ Phase 4B: Markdown → chunks
+│   │       │   ├── vector_index_pipeline.py      ★ Phase 4B: chunks → vector store
+│   │       │   ├── test_ai.py                    ★ Phase 4B: HF connectivity probe
+│   │       │   ├── test_ai_direct_hf.py          ★ Phase 4B: huggingface_hub probe
+│   │       │   └── test_vector_store.py          ★ Phase 4B: Chroma store/retrieval check
+│   │       ├── vector_store/                     ★ Phase 4B storage abstraction
+│   │       │   ├── base.py                       BaseVectorStore + VectorRecord/SearchQuery
+│   │       │   ├── chroma_store.py               ChromaDB backend (local dev)
+│   │       │   ├── pgvector_store.py             pgvector backend (Supabase/Postgres)
+│   │       │   └── factory.py                   build_vector_store()
 │   │       ├── storage/                          ★ Phase 4A storage layer
 │   │       │   ├── base.py                       Abstract interfaces
 │   │       │   ├── models.py                     Unified schema dataclass
@@ -218,8 +241,8 @@ NEXUS AURORA/
 │   │       ├── spiders/
 │   │       │   └── nexora_spider.py
 │   │       ├── api.py                 FastAPI + interactive CLI
-│   │       ├── items.py               Updated with Phase 4A fields
-│   │       ├── settings.py            Updated with Phase 4A priorities
+│   │       ├── items.py               Updated with Phase 4A/4B fields
+│   │       ├── settings.py            Updated with Phase 4A/4B priorities
 │   │       └── sitemap_detector.py
 │   ├── Extractor/
 │   │   ├── multimodal_extractor.py                ★ Phase 4A
@@ -228,20 +251,19 @@ NEXUS AURORA/
 │   │   └── lid.176.ftz
 │   ├── output/
 │   │   ├── audit/                                 Test reports & benchmarks
-│   │   │   ├── phase3_*.md
-│   │   │   └── phase4a_test1_report.md            ★ Phase 4A
 │   │   ├── parquet/                               ★ Phase 4A Parquet exports
 │   │   ├── pages/
 │   │   └── master_dataset.csv
 │   ├── tests/
 │   │   ├── test_phase4a.py                        ★ 18-test Phase 4A suite
-│   │   ├── test_phase3_*.py
 │   │   └── ...
 │   └── release_notes_v4.1.0.md
 ├── data/
 │   ├── test_profiles.db
-│   └── nexora_metadata.db                         ★ Phase 4A auto-created DB
+│   ├── nexora_metadata.db                         ★ Phase 4A auto-created DB
+│   └── chroma/                                     ★ Phase 4B vector store (auto-created)
 └── Project Tools/
+    └── switch_model_guide.md                      ★ Phase 4B: model/provider/backend switching
 ```
 
 For full details, see [REPOSITORY_STRUCTURE.md](REPOSITORY_STRUCTURE.md).
@@ -256,8 +278,14 @@ For full details, see [REPOSITORY_STRUCTURE.md](REPOSITORY_STRUCTURE.md).
 
 ### Install Dependencies
 ```powershell
-cd "Nexora application"
+cd "Nexora application\application documents"
 pip install -r requirements.txt
+```
+
+### Phase 4B Dependencies
+```powershell
+pip install litellm chromadb requests
+# (optional, for the OpenAI/ollama provider paths) pip install sentence-transformers
 ```
 
 ### Install Playwright (for JS rendering)
@@ -265,11 +293,6 @@ pip install -r requirements.txt
 pip install scrapy-playwright playwright
 playwright install chromium
 set NEXORA_PLAYWRIGHT_ENABLED=1
-```
-
-### Install Phase 4A Dependencies
-```powershell
-pip install pandas pyarrow
 ```
 
 ### Optional: Language Detection Model
@@ -312,7 +335,6 @@ python -m nexora_crawler.api --server
 
 ### Phase 3 — Dynamic Detection Middleware
 The middleware runs automatically when using the Scrapy crawler with `NEXORA_PLAYWRIGHT_ENABLED=1`:
-
 ```powershell
 set NEXORA_PLAYWRIGHT_ENABLED=1
 set NEXORA_STEALTH_ENABLED=1
@@ -329,24 +351,21 @@ Phase 4A pipelines run automatically as part of the Scrapy pipeline chain. No ad
 | Parquet | `output/parquet/` | Compressed columnar files |
 | JSON/CSV | `output/pages/` | Per-page exports (existing) |
 
-To verify the Phase 4A pipeline is working:
+### Phase 4B — AI Enrichment & Vector Indexing
+Phase 4B pipelines also run automatically in the chain. They require a Hugging Face token in `.env` (`NEXORA_AI_API_KEY`). A crawl that reaches the vector stage writes one `VectorRecord` per chunk into the configured backend (Chroma by default, at `data/chroma`).
+
+Verify the AI + vector stack before/after a crawl:
 ```powershell
-cd "Nexora application/tests"
-python -m pytest test_phase4a.py -v
+cd "Nexora application/Crawler"
+
+# 1) Connectivity: LLM via LiteLLM + embedding via HF legacy endpoint
+python -m nexora_crawler.pipelines.test_ai
+
+# 2) Prove embeddings are STORED in and RETRIEVEABLE from Chroma
+python -m nexora_crawler.pipelines.test_vector_store
 ```
 
-### Benchmark Suite
-```powershell
-# Quick validation (4 tests, ~10 sites)
-cd "Nexora application"
-python tests/real_site_test_phase3.py
-
-# Full 50-site benchmark (~4 minutes, rate-limited)
-python tests/real_site_benchmark_phase3.py
-
-# Phase 4A storage engine tests (18 tests)
-python -m pytest tests/test_phase4a.py -v
-```
+`test_vector_store.py` prints the store health, record count, sample records (with vector dim), and a round-trip search whose top hit is the query chunk at `score≈1.0`.
 
 ---
 
@@ -370,32 +389,32 @@ output/
 ├── pages/
 │   ├── example.com__about__20250624T143022.json
 │   ├── example.com__about__20250624T143022.csv
-├── parquet/                               ← NEW Phase 4A
+├── parquet/                               ← Phase 4A
 │   └── nexora_20260630_190925_0000.parquet
 data/
-└── nexora_metadata.db                     ← NEW Phase 4A
+├── nexora_metadata.db                     ← Phase 4A
+└── chroma/                                ← Phase 4B vector store (auto-created)
+    ├── chroma.sqlite3
+    └── <uuid>/                            ← collection segments
 ```
 
-### Phase 4A Fields (Added to Existing)
+### Phase 4B Fields (Added to Item)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `markdown` | str | Clean Markdown content (Trafilatura) |
-| `extraction_method` | str | trafilatura / fallback / error |
-| `token_reduction_pct` | float | % of tokens reduced vs raw HTML |
-| `image_assets` | list[dict] | Structured image metadata (src, alt, dimensions, hero) |
-| `video_assets` | list[dict] | Structured video metadata (src, poster, platform) |
-| `crawl_id` | str | UUID of crawl job |
-| `entities` | dict | Prices, currency, tickers, products, people |
-| `style_analysis` | dict | Colors, tech_stack, framework, theme, fonts |
-| `quality_scores` | dict | Readability, duplication, text_density, crawl_quality |
-| `website_type` | str | e-commerce, blog, docs, article, unknown |
+| `ai_summary` | str | 2-3 sentence LLM summary of the page |
+| `ai_tags` | list[str] | 3-5 generated topic tags |
+| `ai_embedding` | list[float] | Page-level embedding (384-dim MiniLM) |
+| `chunk_count` | int | Number of chunks produced |
+| `chunk_ids` | list[str] | Chunk UUIDs |
+| `chunks` | list[NexoraChunk] | In-memory chunks consumed by VectorIndexPipeline |
+| `has_embedding` | bool | True once indexed |
 
 ---
 
 ## Configuration
 
-Key settings in `Crawler/nexora_crawler/settings.py`:
+Key settings in `Crawler/nexora_crawler/settings.py` (also overridable in `.env`):
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
@@ -403,17 +422,24 @@ Key settings in `Crawler/nexora_crawler/settings.py`:
 | `NEXORA_STEALTH_ENABLED` | `True` | Apply bot-detection evasion |
 | `NEXORA_MARKDOWN_ENABLED` | `True` | Enable HTML → Markdown conversion |
 | `NEXORA_PARQUET_ENABLED` | `True` | Enable compressed Parquet export |
-| `NEXORA_PARQUET_COMPRESSION` | `snappy` | Parquet compression: snappy/gzip/zstd/brotli |
-| `NEXORA_PARQUET_ROW_GROUP_SIZE` | `10000` | Rows per Parquet row group |
-| `NEXORA_PARQUET_OUTPUT` | `./output/parquet` | Parquet output directory |
 | `NEXORA_METADATA_DB` | `./data/nexora_metadata.db` | SQLite metadata database path |
 | `ROBOTSTXT_OBEY` | `True` | Respect robots.txt |
 | `DOWNLOAD_DELAY` | `1.5` | Base delay between requests (seconds) |
 | `AUTOTHROTTLE_ENABLED` | `True` | Adapt delay to server response time |
+| `NEXORA_AI_ENABLED` | `True` | Enable Phase 4B AI enrichment |
+| `NEXORA_AI_PROVIDER` | `huggingface` | `huggingface` / `ollama` / `openai` / `anthropic` |
+| `NEXORA_AI_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | LLM for summary/tags |
+| `NEXORA_AI_EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
+| `NEXORA_EMBEDDING_DIM` | `384` | Must match the embedding model |
+| `NEXORA_VECTOR_BACKEND` | `chroma` | `chroma` (local) / `pgvector` (Supabase) |
+| `NEXORA_VECTOR_INDEX_ENABLED` | `True` | Index chunks into the vector store |
+| `NEXORA_CHROMA_PATH` | `./data/chroma` | Chroma persistence path |
+| `NEXORA_CHUNK_SIZE` | `512` | Target tokens per chunk |
+| `NEXORA_CHUNK_OVERLAP` | `128` | Overlap tokens between chunks |
 
 ---
 
-## Testing
+## Testing & Verification
 
 ```powershell
 cd "Nexora application"
@@ -421,19 +447,25 @@ cd "Nexora application"
 # Phase 3 — Live-site validation
 python tests/real_site_test_phase3.py
 
-# Phase 3 — 50-site benchmark (~4 min)
-python tests/real_site_benchmark_phase3.py
-
-# Phase 3 — Unit + integration
-pytest tests/test_phase3_component.py -v
-pytest tests/test_phase3_integration.py -v
-
 # Phase 4A — Storage engine (18 tests)
 python -m pytest tests/test_phase4a.py -v
 
-# Phase 4A — Filter by test case
-python -m pytest tests/test_phase4a.py -v -k "P4A-T01 or P4A-T10"
+# Phase 4B — HF connectivity (LLM via LiteLLM + embedding via legacy endpoint)
+python -m nexora_crawler.pipelines.test_ai
+
+# Phase 4B — Chroma storage & retrieval round-trip
+python -m nexora_crawler.pipelines.test_vector_store
 ```
+
+---
+
+## Switching Models / Providers / Backends
+
+All three are **settings-only changes** — no code changes required. See [`Project Tools/switch_model_guide.md`](Project%20Tools/switch_model_guide.md) for the full matrix.
+
+- **Embedding model (same HF family):** update `NEXORA_AI_EMBEDDING_MODEL` + `NEXORA_EMBEDDING_DIM`. If the dimension changes, wipe `data/chroma` (the HNSW index bakes in the dim).
+- **AI provider:** update `NEXORA_AI_PROVIDER` / `NEXORA_AI_MODEL` / `NEXORA_AI_BASE_URL` / `NEXORA_AI_API_KEY`. Non-`huggingface` providers use LiteLLM's OpenAI-compatible API.
+- **Vector backend → pgvector/Supabase:** set `NEXORA_VECTOR_BACKEND=pgvector` and put `NEXORA_DATABASE_URL` + `NEXORA_EMBEDDING_DIM` in `.env` (the factory reads these from the environment). Use the Supabase **direct** connection string (port 5432), not the 6543 pooler.
 
 ---
 
@@ -445,21 +477,23 @@ python -m pytest tests/test_phase4a.py -v -k "P4A-T01 or P4A-T10"
 | **2 / 2.5** | ✅ Complete | Multi-page Scrapy crawler + style extraction |
 | **2.6** | ✅ Complete | FastAPI REST API + interactive CLI + sitemap discovery |
 | **3** | ✅ Complete (3.4) | DynamicDetectionMiddleware with 8-signal engine, 85-90% accuracy |
-| **4A** | ✅ Complete (v4.1.0) | Storage & Multi-Format Ingestion Engine (Markdown, multimodal, unified schema, SQLite, Parquet) |
-| **4B** | 🔜 Next | AI enrichment, LLM summarization, embeddings, RAG chunking |
+| **4A** | ✅ Complete (v4.1.0) | Storage & Multi-Format Ingestion Engine |
+| **4B** | ✅ Complete (v4.2.1) | AI enrichment, embeddings, chunking, vector indexing |
 | **5** | 📋 Planned | Distributed crawling, shared profile cache |
 | **6** | 📋 Planned | Tauri desktop application |
+| **7** | 📋 Planned | Hybrid search, list_all for migration tooling |
 
 ---
 
-## Known Limitations (v4.1.0)
+## Known Limitations (v4.2.1)
 
-- **Network-dependent** — ~12% of sites may timeout; these correctly fallback to Playwright but add latency
-- **Angular production builds** — `ng-version=` attribute is removed; detection relies on bundle patterns
-- **No auth** — FastAPI endpoints are open; job store is in-memory only
-- **Some heavy SPAs** — TikTok relies on script ratio (>0.35) rather than framework markers
-- **Phase 4B not yet implemented** — AI enrichment, embeddings, and RAG chunking are placeholders only
-- **Parquet requires pandas+pyarrow** — must be installed separately
+- **Page-level embeddings:** The embedding is generated once per page (on the whole Markdown) and **inherited by all chunks**. Retrieval therefore behaves at page granularity until per-chunk embeddings are implemented.
+- **HF router rate limits:** The free HF router can return 429/503; the pipeline degrades gracefully (skips embedding, logs a warning) so the crawl continues.
+- **Chroma dimension lock:** Switching embedding models with a different dimension requires wiping `data/chroma` before re-crawling.
+- **Network-dependent** — ~12% of sites may timeout; these correctly fallback to Playwright but add latency.
+- **Angular production builds** — `ng-version=` attribute is removed; detection relies on bundle patterns.
+- **No auth** — FastAPI endpoints are open; job store is in-memory only.
+- **Parquet requires pandas+pyarrow** — must be installed separately.
 
 ---
 
@@ -470,5 +504,5 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <strong>NEXUS AURORA v4.1.0</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
+  <strong>NEXUS AURORA v4.2.1</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
 </p>
