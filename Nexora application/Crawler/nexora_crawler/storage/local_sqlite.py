@@ -35,7 +35,7 @@ class MetadataStore:
                     title TEXT,
                     timestamp TEXT NOT NULL,
                     crawl_id TEXT NOT NULL,
-                    markdown_preview TEXT,
+                    markdown TEXT,
                     markdown_word_count INTEGER DEFAULT 0,
                     token_reduction_pct REAL DEFAULT 0.0,
                     ai_summary TEXT,
@@ -86,7 +86,7 @@ class MetadataStore:
                 conn.execute("""
                     INSERT OR REPLACE INTO pages (
                         url, domain, title, timestamp, crawl_id,
-                        markdown_preview, markdown_word_count, token_reduction_pct,
+                        markdown, markdown_word_count, token_reduction_pct,
                         ai_summary, ai_tags_json, entities_json, price_change_delta,
                         style_analysis_json, quality_scores_json,
                         image_assets_json, video_assets_json,
@@ -100,7 +100,7 @@ class MetadataStore:
                     item.get("title", ""),
                     item.get("timestamp", ""),
                     item.get("crawl_id", ""),
-                    item.get("markdown", "")[:500],
+                    item.get("markdown", ""),
                     item.get("markdown_word_count", 0),
                     item.get("token_reduction_pct", 0.0),
                     item.get("ai_summary", ""),
@@ -128,7 +128,44 @@ class MetadataStore:
                         item.get("url", ""), exc)
             return False
 
+    def update_enrichment(self, url: str, ai_summary: str, ai_tags: List) -> bool:
+        """Persist AI enrichment results back onto an already-saved page row.
+
+        Writes to the existing `ai_summary` / `ai_tags_json` columns so the
+        offline `enrich` command and eager-mode crawls share the same fields.
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "UPDATE pages SET ai_summary = ?, ai_tags_json = ? WHERE url = ?",
+                    (ai_summary or "", json.dumps(ai_tags or []), url)
+                )
+                conn.commit()
+            return True
+        except Exception as exc:
+            logger.error("[MetadataStore] update_enrichment failed for %s: %s",
+                         url, exc)
+            return False
+
+    def get_unenriched_pages(self, limit: int = 100) -> List[Dict]:
+        """Return saved pages that have not been enriched yet.
+
+        A page counts as unenriched when its `ai_summary` is still empty
+        (the crawler never sets it inline in on_demand mode, and the offline
+        `enrich` command fills it in once vectors/summary are produced).
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM pages "
+                "WHERE ai_summary IS NULL OR ai_summary = '' "
+                "ORDER BY timestamp DESC LIMIT ?",
+                (limit,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
     def query_by_domain(self, domain: str, limit: int = 100) -> List[Dict]:
+
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(

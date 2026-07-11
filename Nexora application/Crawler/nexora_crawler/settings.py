@@ -8,6 +8,7 @@ Phase 3 additions are clearly marked — uncomment when ready.
 Phase 4A: Added markdown, multimodal, schema enricher, metadata indexer, parquet pipelines.
 """
 
+import os
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -108,6 +109,16 @@ DOWNLOADER_MIDDLEWARES = {
     # "nexora_crawler.middlewares.ProxyRotationMiddleware": 800,
 }
 
+# ── Enrichment mode ───────────────────────────────────────────────────────────
+# Controls WHEN AI enrichment (summary/tags/vectors) runs:
+#   "eager"     = run inline during the crawl (default — current behavior).
+#   "on_demand" = skip enrichment during crawl; run it later via the offline
+#                 `enrich` command over already-saved pages.
+# Set via env var / .env; defaults to "on_demand" so crawls are fast and
+# AI-free — run `python enrich.py` afterward to backfill summary/tags/vectors.
+# Set NEXORA_ENRICH_MODE=eager for the old inline-enrichment behavior.
+NEXORA_ENRICH_MODE = os.getenv("NEXORA_ENRICH_MODE", "on_demand").lower()
+
 # ── Item Pipelines ────────────────────────────────────────────────────────────
 # Order matters: lower numbers run first. 
 # when user enters url , where does it first go  ? 
@@ -132,19 +143,28 @@ DOWNLOADER_MIDDLEWARES = {
 #   450  ParquetExportPipeline       ← Phase 4A: compressed columnar export
 #   500  ExportPipeline              ← Phase 1: per-page JSON + CSV files
 #   600  DatasetPipeline             ← Phase 1: master dataset CSV
+# Base chain — always runs during a crawl (extraction → markdown → style →
+# schema → metadata/DB save → parquet/exports).
 ITEM_PIPELINES = {
     "nexora_crawler.pipelines.NexoraExtractionPipeline": 100,
     "nexora_crawler.pipelines.markdown_pipeline.MarkdownExtractionPipeline": 110,
     "nexora_crawler.pipelines.NexoraStylePipeline": 150,
     "nexora_crawler.pipelines.schema_enricher.UnifiedSchemaEnricher": 160,
     "nexora_crawler.pipelines.metadata_indexer.MetadataIndexerPipeline": 165,
-    'nexora_crawler.pipelines.ai_enrichment.AIEnrichmentPipeline': 250,            # Phase 4B
-    'nexora_crawler.pipelines.chunking_pipeline.StructuralChunkingPipeline': 260,    # Phase 4B
-    'nexora_crawler.pipelines.vector_index_pipeline.VectorIndexPipeline': 270,       # Phase 4B
     "nexora_crawler.pipelines.parquet_export.ParquetExportPipeline": 450,
     "nexora_crawler.pipelines.NexoraExportPipeline": 500,
     "nexora_crawler.pipelines.NexoraDatasetPipeline": 600,
 }
+
+# Phase 4B enrichment chain (AI summary/tags/vectors → chunking → vector index).
+# Only runs inline during the crawl in "eager" mode. In "on_demand" mode it is
+# excluded here and invoked later via the offline `enrich` command.
+if NEXORA_ENRICH_MODE == "eager":
+    ITEM_PIPELINES.update({
+        'nexora_crawler.pipelines.ai_enrichment.AIEnrichmentPipeline': 250,            # Phase 4B
+        'nexora_crawler.pipelines.chunking_pipeline.StructuralChunkingPipeline': 260,    # Phase 4B
+        'nexora_crawler.pipelines.vector_index_pipeline.VectorIndexPipeline': 270,       # Phase 4B
+    })
 
 # ── HTTP Cache (dev only — speeds up re-runs without re-fetching) ─────────────
 # Disable when you need fresh data or in production.
@@ -168,7 +188,6 @@ LOG_LEVEL = "INFO"
 # requests go through standard HTTP — no playwright, no probe that tries to
 # set playwright_meta on requests.
 # Set NEXORA_PLAYWRIGHT_ENABLED=true in .env or environment to enable.
-import os
 NEXORA_PLAYWRIGHT_ENABLED = os.getenv("NEXORA_PLAYWRIGHT_ENABLED", "true").lower() in ("1", "true", "yes")
 NEXORA_STEALTH_ENABLED = os.getenv("NEXORA_STEALTH_ENABLED", "true").lower() in ("1", "true", "yes")
 
