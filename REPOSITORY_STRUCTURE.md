@@ -1,6 +1,6 @@
 # Repository Structure
 
-> NEXUS AURORA v4.2.1 — reflects the current state including Phase 4B (AI enrichment, embeddings, chunking, vector indexing).
+> NEXUS AURORA v4.3.0 — reflects the current state including on-demand enrichment rework, Phase 4B test verification, and multi-entrypoint wiring.
 
 ```text
 .
@@ -8,70 +8,90 @@
 ├── LICENSE
 ├── README.md
 ├── REPOSITORY_STRUCTURE.md
+├── release_notes_v4.3.0.md                              ★ new: v4.3.0 release notes
 ├── Nexora application/
 │   ├── application documents/
 │   │   └── requirements.txt
 │   ├── Crawler/
 │   │   ├── __init__.py
 │   │   ├── scrapy.cfg
+│   │   ├── enrich.py                                    ★ NEW: offline on-demand enrichment CLI
 │   │   ├── nexora_crawler/
-│   │   │   ├── .env                                  ← secrets + Phase 4B toggles (synced to settings.py)
-│   │   │   ├── api.py                                ← FastAPI + interactive CLI
-│   │   │   ├── items.py                              ← Phase 4A/4B item fields
-│   │   │   ├── settings.py                           ← pipeline chain (100→600) + 4B config
+│   │   │   ├── .env                                     ← secrets + Phase 4B toggles (synced to settings.py)
+│   │   │   ├── api.py                                   ← FastAPI + interactive CLI + enrich_mode wiring
+│   │   │   ├── items.py                                 ← Phase 4A/4B item fields (incl. vector_backend)
+│   │   │   ├── settings.py                              ← pipeline chain (100→600) + 4B config + NEXORA_ENRICH_MODE
 │   │   │   ├── sitemap_detector.py
 │   │   │   ├── spiders/
 │   │   │   │   └── nexora_spider.py
 │   │   │   ├── middlewares/
 │   │   │   │   ├── __init__.py
-│   │   │   │   ├── dynamic_detection.py             ← Phase 3 Core: JS vs Static detection
+│   │   │   │   ├── dynamic_detection.py                 ← Phase 3 Core: JS vs Static detection
 │   │   │   │   ├── exponential_backoff.py
 │   │   │   │   ├── playwright_cleanup.py
 │   │   │   │   └── playwright_resource_blocker.py
-│   │   │   ├── AI_Utilities/                         ← Phase 4B: embedding engine
-│   │   │   │   └── embedding_engine.py               ★ provider-aware (HF legacy / LiteLLM)
-│   │   │   ├── pipelines/                            ← Phase 4A + 4B modular pipelines
-│   │   │   │   ├── __init__.py                       ← Phase 1-3: Extraction, Style, Export, Dataset
-│   │   │   │   ├── markdown_pipeline.py              ← Phase 4A (110): HTML → Markdown + multimodal
-│   │   │   │   ├── schema_enricher.py                ← Phase 4A (160): unified schema + website_type
-│   │   │   │   ├── metadata_indexer.py               ← Phase 4A (165): SQLite metadata persistence
-│   │   │   │   ├── parquet_export.py                 ← Phase 4A (450): compressed Parquet export
-│   │   │   │   ├── ai_enrichment.py                  ← Phase 4B (250): summary + tags + embedding
-│   │   │   │   ├── chunking_pipeline.py              ← Phase 4B (260): Markdown → NexoraChunk
-│   │   │   │   ├── vector_index_pipeline.py          ← Phase 4B (270): chunks → BaseVectorStore
-│   │   │   │   ├── test_ai.py                        ← Phase 4B: HF connectivity probe (LiteLLM LLM + direct embedding)
-│   │   │   │   ├── test_ai_direct_hf.py              ← Phase 4B: huggingface_hub InferenceClient probe
-│   │   │   │   └── test_vector_store.py              ← Phase 4B: Chroma store/retrieval verification
-│   │   │   └── vector_store/                         ← Phase 4B: storage abstraction
-│   │   │       ├── base.py                           ← BaseVectorStore + VectorRecord/SearchQuery/SearchResult
-│   │   │       ├── chroma_store.py                   ← ChromaDB backend (local dev)
-│   │   │       ├── pgvector_store.py                 ← pgvector backend (Supabase/Postgres)
-│   │   │       └── factory.py                        ← build_vector_store()
+│   │   │   ├── AI_Utilities/                            ← Phase 4B: embedding engine
+│   │   │   │   └── embedding_engine.py                  ★ provider-aware (HF legacy / LiteLLM)
+│   │   │   ├── pipelines/                               ← Phase 4A + 4B modular pipelines
+│   │   │   │   ├── __init__.py                          ← Phase 1-3: Extraction, Style, Export, Dataset
+│   │   │   │   ├── markdown_pipeline.py                 ← Phase 4A (110): HTML → Markdown + multimodal
+│   │   │   │   ├── schema_enricher.py                   ← Phase 4A (160): unified schema + website_type
+│   │   │   │   ├── metadata_indexer.py                  ← Phase 4A (165): SQLite metadata persistence
+│   │   │   │   ├── parquet_export.py                    ← Phase 4A (450): compressed Parquet export
+│   │   │   │   ├── ai_enrichment.py                     ← Phase 4B (250): summary + tags + embedding (+ _truncate_text)
+│   │   │   │   ├── chunking_pipeline.py                 ← Phase 4B (260): Markdown → NexoraChunk
+│   │   │   │   ├── vector_index_pipeline.py             ← Phase 4B (270): chunks → BaseVectorStore
+│   │   │   │   ├── test_ai.py                           ← Phase 4B: HF connectivity probe (LiteLLM LLM + direct embedding)
+│   │   │   │   ├── test_ai_direct_hf.py                 ← Phase 4B: huggingface_hub InferenceClient probe
+│   │   │   │   └── test_vector_store.py                 ← Phase 4B: Chroma store/retrieval verification
+│   │   │   └── vector_store/                            ← Phase 4B: storage abstraction
+│   │   │       ├── base.py                              ← BaseVectorStore + VectorRecord/SearchQuery/SearchResult
+│   │   │       ├── chroma_store.py                      ← ChromaDB backend (local dev)
+│   │   │       ├── pgvector_store.py                    ← pgvector backend (Supabase/Postgres)
+│   │   │       └── factory.py                           ← build_vector_store()
 │   │   └── Extractor/
-│   │       ├── multimodal_extractor.py               ← Phase 4A: image/video asset extraction
+│   │       ├── multimodal_extractor.py                  ← Phase 4A: image/video asset extraction
 │   │       └── ... (Beautifulsoup/Trafilatura/parser/etc.)
 │   ├── Models/
-│   │   └── lid.176.ftz                               ← Language detection model
+│   │   └── lid.176.ftz                                  ← Language detection model
 │   ├── output/
 │   │   ├── master_dataset.csv
-│   │   ├── pages/                                    ← per-page CSV+JSON exports
-│   │   ├── parquet/                                  ← Phase 4A: Parquet exports
-│   │   └── audit/                                    ← benchmark & test reports
-│   └── tests/
-│       ├── test_phase4a.py                           ← Phase 4A: 18-test suite
-│       └── ... (Phase 3 live-site / benchmark scripts)
+│   │   ├── pages/                                       ← per-page CSV+JSON exports
+│   │   ├── parquet/                                     ← Phase 4A: Parquet exports
+│   │   └── audit/                                       ← benchmark & test reports (45-test Phase 4B suite)
+│   │       ├── NEXORA_PHASE4B_TEST_SUMMARY.md           ★ comprehensive test summary
+│   │       ├── BUG_enrich_py_missing_helpers.md         ★ known bug documentation
+│   │       ├── audit_round3_step3_2.py                  ★ R3 integration tests
+│   │       ├── audit_round3_step3_3.py                  ★ R3 regression tests
+│   │       ├── R1-Step1.1-*.json/.md                    Round 1 audit artifacts
+│   │       ├── R1-Step1.2-*.json/.md                    Round 1 audit artifacts
+│   │       ├── R1-Step1.3-*.json/.md                    Round 1 audit artifacts
+│   │       ├── R2-Step2.1-*.json/.md                    Round 2 audit artifacts
+│   │       ├── R2-Step2.2-*.json/.md                    Round 2 audit artifacts
+│   │       ├── R2-Step2.3-*.json/.md                    Round 2 audit artifacts
+│   │       ├── R2-Step2.4-*.json/.md                    Round 2 audit artifacts
+│   │       ├── R2-Step2.5-*.json/.md                    Round 2 audit artifacts
+│   │       ├── R2-Step2.6-*.json/.md                    Round 2 audit artifacts
+│   │       ├── R3-Step3.1-*.json/.md                    Round 3 audit artifacts
+│   │       ├── R3-Step3.2-*.json/.md                    Round 3 audit artifacts
+│   │       └── R3-Step3.3-*.json/.md                    Round 3 audit artifacts
+│   ├── tests/
+│   │   ├── test_phase4a.py                              ← Phase 4A: 18-test suite
+│   │   └── ... (Phase 3 live-site / benchmark scripts)
+│   ├── release_notes_v4.1.0.md
+│   └── release_notes_v4.3.0.md                          ★ v4.3.0 release notes
 ├── data/
-│   ├── test_profiles.db                              ← SQLite site profile cache
-│   ├── nexora_metadata.db                            ← Phase 4A: SQLite metadata store (auto-created)
-│   └── chroma/                                       ← Phase 4B: vector store (auto-created; chroma.sqlite3 + segments)
+│   ├── test_profiles.db                                 ← SQLite site profile cache
+│   ├── nexora_metadata.db                               ← Phase 4A: SQLite metadata store (auto-created)
+│   └── chroma/                                          ← Phase 4B: vector store (auto-created; chroma.sqlite3 + segments)
 └── Project Tools/
-    ├── switch_model_guide.md                         ← Phase 4B: model/provider/backend switch guide
+    ├── switch_model_guide.md                            ← Phase 4B: model/provider/backend switch guide
     ├── competitive_analysis_nexora_vs_industry.md
     ├── Phase 1 Documentation/
     ├── Phase 2 Documentation/
     ├── Phase 3 Documentation/
     ├── Phase 4 Documentation/
-    │   └── release_notes_v4.1.0.md                   ← prior release notes
+    │   └── release_notes_v4.1.0.md                      ← prior release notes
     ├── Phase 5 Documentation/
     ├── Phase 6 Documentation/
     ├── Phase 7 Documentation/
@@ -96,9 +116,9 @@
 - **`data/nexora_metadata.db`** — Auto-created SQLite metadata store.
 - **`tests/test_phase4a.py`** — 18-test suite.
 
-### Phase 4B — AI Enrichment & Vector Indexing ✅ (v4.2.1)
+### Phase 4B — AI Enrichment & Vector Indexing ✅ (v4.3.0)
 - **`Crawler/nexora_crawler/AI_Utilities/embedding_engine.py`** — `UnifiedEmbeddingEngine`. Provider-aware: `huggingface` → HF router legacy `feature-extraction` endpoint; others → LiteLLM `aembedding`.
-- **`Crawler/nexora_crawler/pipelines/ai_enrichment.py`** — `AIEnrichmentPipeline` (250): LLM summary + tags + page-level embedding.
+- **`Crawler/nexora_crawler/pipelines/ai_enrichment.py`** — `AIEnrichmentPipeline` (250): LLM summary + tags + page-level embedding. Includes `_truncate_text()` for clean prompt boundaries.
 - **`Crawler/nexora_crawler/pipelines/chunking_pipeline.py`** — `StructuralChunkingPipeline` (260): Markdown → `NexoraChunk` (~512 tokens), inherits `ai_summary`/`ai_tags`/`ai_embedding`.
 - **`Crawler/nexora_crawler/pipelines/vector_index_pipeline.py`** — `VectorIndexPipeline` (270): `NexoraChunk` → `VectorRecord` → `BaseVectorStore`.
 - **`Crawler/nexora_crawler/vector_store/`** — `base.py` (`BaseVectorStore` contract), `chroma_store.py` (local), `pgvector_store.py` (Supabase/Postgres), `factory.py` (`build_vector_store`).
@@ -106,6 +126,14 @@
 - **`Crawler/nexora_crawler/pipelines/test_ai.py`** / **`test_ai_direct_hf.py`** — connectivity probes.
 - **`Crawler/nexora_crawler/pipelines/test_vector_store.py`** — proves embeddings are stored in and retrieveable from Chroma (health, count, sample records, round-trip search).
 - **`Project Tools/switch_model_guide.md`** — change model/provider/backend via settings only.
+
+### On-Demand Enrichment Rework (v4.3.0)
+- **`Crawler/nexora_crawler/settings.py`** — `NEXORA_ENRICH_MODE` flag (`"eager"` | `"on_demand"`). Conditional `ITEM_PIPELINES` (8 pipelines in on_demand, 11 in eager).
+- **`Crawler/nexora_crawler/storage/local_sqlite.py`** — `_migrate_schema()` (markdown_preview→markdown), `get_unenriched_pages()`, `update_enrichment()`.
+- **`Crawler/nexora_crawler/items.py`** — `vector_backend` field added.
+- **`Crawler/nexora_crawler/api.py`** — `enrich_mode` in `CrawlRequest`/`CrawlResponse`, `_normalize_enrich_mode()`, subprocess env forwarding, settings reload in `run_cli_direct()`.
+- **`Crawler/enrich.py`** — New offline enrichment CLI. Reuses Phase 4B pipelines over saved pages. Supports `--url`, `--domain`, `--crawl-id`, `--limit`. **Note:** has a known bug (missing 3 helper functions — see `outputs/audit/BUG_enrich_py_missing_helpers.md`).
+- **`outputs/audit/`** — 45-test verification suite (39 PASS, 5 FAIL, 1 SKIP). See `NEXORA_PHASE4B_TEST_SUMMARY.md` for details.
 
 ### Phase 4+ — Future
 - **`PHASE_4_AI_ANALYTICS.md`** — ML-based site classification, smart routing

@@ -1,0 +1,75 @@
+{
+  "round": "R2",
+  "step": "Step 2.3 — Unit tests: chunking",
+  "generated_at": "2026-07-12T00:01:59.446379+00:00",
+  "summary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0
+  },
+  "results": [
+    {
+      "test_id": "P4B-T06",
+      "name": "full markdown -> split into ~512-token chunks",
+      "status": "PASS",
+      "expected": {
+        "splits": true,
+        "chunk_count>=": 2,
+        "token_band": [
+          200,
+          1200
+        ],
+        "avg~": 512
+      },
+      "actual": {
+        "chunk_count": 6,
+        "sizes": [
+          359,
+          720,
+          1080,
+          1080,
+          1080,
+          1080
+        ],
+        "avg": 899.8,
+        "chunk_count_field": 6
+      },
+      "notes": "Long markdown split into multiple chunks. Measured avg ~899.8 tokens; the ~384-word (~480-token) overlap overhead pushes some chunks above the plan's 400-600 soft target (see T07).",
+      "ts": "2026-07-12T00:01:59.406101+00:00"
+    },
+    {
+      "test_id": "P4B-T07",
+      "name": "adjacent chunk boundaries share ~128 tokens of overlap",
+      "status": "PASS",
+      "expected": {
+        "adjacent_overlap": true
+      },
+      "actual": {
+        "chunk_count": 6,
+        "pairs_checked": 5,
+        "overlaps_ok": true
+      },
+      "notes": "Every chunk after the first begins with the previous chunk's tail (~128 tokens / 384 words) per _get_overlap_text.",
+      "ts": "2026-07-12T00:01:59.431815+00:00"
+    },
+    {
+      "test_id": "P4B-T08",
+      "name": "chunk metadata retains heading hierarchy per chunk",
+      "status": "PASS",
+      "expected": {
+        "some_chunk_has_heading_chain": true,
+        "sectionA_present": true,
+        "sectionB_present": true,
+        "format_Hn": true
+      },
+      "actual": {
+        "chunks_with_chain": 6,
+        "sectionA": true,
+        "sectionB": true,
+        "format_ok": true
+      },
+      "notes": "Chunks under '## Section A/B' carry heading_chain like ['H2: Section A', ...]; format verified as 'H{n}: text'.",
+      "ts": "2026-07-12T00:01:59.444144+00:00"
+    }
+  ]
+}

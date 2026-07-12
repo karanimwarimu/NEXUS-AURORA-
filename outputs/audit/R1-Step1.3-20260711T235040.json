@@ -1,0 +1,46 @@
+{
+  "round": "R1",
+  "step": "Step 1.3 — Regression: default flip",
+  "generated_at": "2026-07-11T23:50:40.273390+00:00",
+  "summary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0
+  },
+  "results": [
+    {
+      "test_id": "R1-R01",
+      "name": "no env var -> default on_demand is fast / no inline enrich",
+      "status": "PASS",
+      "expected": {
+        "NEXORA_ENRICH_MODE": "on_demand",
+        "pipeline_count": 8,
+        "enrich_pipelines": 0
+      },
+      "actual": {
+        "NEXORA_ENRICH_MODE": "on_demand",
+        "pipeline_count": 8,
+        "enrich_pipelines": 0
+      },
+      "notes": "Default flip verified: base crawl chain only (8 pipelines), Phase 4B enrichment excluded inline.",
+      "ts": "2026-07-11T23:50:40.247294+00:00"
+    },
+    {
+      "test_id": "R1-R02",
+      "name": "explicit eager override -> still fully functional fallback",
+      "status": "PASS",
+      "expected": {
+        "NEXORA_ENRICH_MODE": "eager",
+        "pipeline_count": 11,
+        "enrich_pipelines": 3
+      },
+      "actual": {
+        "NEXORA_ENRICH_MODE": "eager",
+        "pipeline_count": 11,
+        "enrich_pipelines": 3
+      },
+      "notes": "Eager fallback fully wired: 11 pipelines incl. all 3 Phase 4B enrichment pipelines.",
+      "ts": "2026-07-11T23:50:40.260061+00:00"
+    }
+  ]
+}

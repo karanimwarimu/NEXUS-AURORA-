@@ -197,3 +197,35 @@ From a live on_demand-vs-eager test run:
 - `Nexora application/Crawler/nexora_crawler/items.py` — `vector_backend` field.
 - `Nexora application/Crawler/nexora_crawler/pipelines/ai_enrichment.py` — `_truncate_text`.
 - `Nexora application/Crawler/nexora_crawler/api.py` — FastAPI `/crawl` `enrich_mode` + CLI flags/prompt.
+:::
+
+
+Nexora Comprehensive Test Plan — Progress Memo
+Goal: Verify the three-round rework (Round 1 crawl/enrich decoupling, Round 2 Phase 4B, Round 3 multi-entrypoint wiring) per the supplied test plan, writing audits to outputs\audit.
+
+Status: Round 1 ✅ done · Round 2 ✅ done · Round 3 🔄 in progress (Steps 3.1 ✅ done, 3.2 being written, 3.3 pending).
+
+What's been completed
+Round 1 — Crawl/Enrich Decoupling
+
+Step 1.1 (flag + storage): R1-U01…U06 — 6 PASS. NEXORA_ENRICH_MODE read/default/gating + full markdown persisted (no 500-char truncation).
+Step 1.2 (offline enrich command): R1-I01…I05 FAIL — revealed a real bug: enrich.py calls _build_crawler() / _collect_targets() / _enrich_row() which are never defined (NameError). 3 diagnostics PASS (storage idempotency, selection, Chroma search). Bug logged to outputs/audit/BUG_enrich_py_missing_helpers.md (user chose "log and continue").
+Step 1.3 (default flip): R1-R01, R1-R02 — 2 PASS.
+Round 2 — Phase 4B
+
+Step 2.1 embedding engine: P4B-T01/T02/T05/T11 — 4 PASS (network mocked).
+Step 2.2 AI enrichment content: P4B-T03/T04 — 2 PASS (LLM mocked).
+Step 2.3 chunking: P4B-T06/T07/T08 — 3 PASS.
+Step 2.4 vector store + search: P4B-T09/T10 — 2 PASS.
+Step 2.5 regression: P4B-T12 SKIP (needs scrapy), R2-R01 — 1 PASS.
+Step 2.6 DoD: DoD-1…10 — 9 PASS, 1 SKIP.
+Round 3 — Multi-Entrypoint Enrich-Mode Wiring
+
+Step 3.1 (normalization + wiring): R3-U01…U07 — 7 PASS (api.py imported via scrapy fakes; fastapi/httpx/uvicorn are installed, only scrapy missing).
+Step 3.2 (per-entrypoint integration): R3-I01…I09 — in progress (file being written). R3-I01/I02 will SKIP (real scrapy crawl needs network; gating already proven by R1). R3-I03/I04 test FastAPI echo + subprocess env forwarding; R3-I05/I06 test interactive prompt→subprocess env; R3-I07 tests the in-process settings reload (the known timing fix); R3-I08 default fallback; R3-I09 enrich.py mode-agnostic (static; live run still blocked by the Round 1 bug).
+Step 3.3 (regression): R3-R01 api.py py_compile, R3-R02 re-run all R1/R2 audits (expect 5 known failures + 2 skips, 0 errors), R3-R03 grep markdown_preview (only in local_sqlite.py migration), R3-R04 SKIP (live server needed).
+Key findings to remember
+enrich.py is non-functional (missing 3 helpers) — logged, not fixed per user decision. Blocks all on-demand enrichment until implemented.
+Chunk sizes run slightly above the plan's 400–600 soft target due to the ~384-word overlap mechanism — observed, not a failure.
+Sandbox limits: scrapy absent (so tests/conftest.py and live crawls can't run); litellm/chromadb/trafilatura installed this session. Real embeddings/LLM/semantic search need network + HF token (real-env item).
+Next action

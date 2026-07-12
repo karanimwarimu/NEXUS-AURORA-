@@ -1,0 +1,39 @@
+{
+  "round": "R2",
+  "step": "Step 2.5 — Regression",
+  "generated_at": "2026-07-12T00:04:40.196377+00:00",
+  "summary": {
+    "total": 2,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 1
+  },
+  "results": [
+    {
+      "test_id": "P4B-T12",
+      "name": "Phase 3 + Phase 4A test suite -> no regressions",
+      "status": "SKIP",
+      "expected": {},
+      "actual": {
+        "status": "SKIP"
+      },
+      "notes": "SKIPPED: the Phase 3/4A suite lives under tests/ and its conftest.py imports scrapy-based items; cannot be collected without scrapy installed. Run in the real environment. Round 1 (Steps 1.1/1.3) already exercised settings/metadata/flag code paths without touching those modules.",
+      "ts": "2026-07-12T00:04:40.182952+00:00"
+    },
+    {
+      "test_id": "R2-R01",
+      "name": "AIEnrichmentPipeline uses UnifiedEmbeddingEngine exclusively",
+      "status": "PASS",
+      "expected": {
+        "embedding_engine_is_UnifiedEmbeddingEngine": true,
+        "no_old_embedding_leaks": true
+      },
+      "actual": {
+        "is_unified": true,
+        "leaks_found": []
+      },
+      "notes": "pipe.embedding_engine is an instance of UnifiedEmbeddingEngine; ai_enrichment.py contains no direct Ollama/old embedding calls (only UnifiedEmbeddingEngine.embed is used).",
+      "ts": "2026-07-12T00:04:40.193557+00:00"
+    }
+  ]
+}
