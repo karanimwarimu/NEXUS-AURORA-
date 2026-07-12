@@ -1,0 +1,114 @@
+{
+  "round": "R3",
+  "step": "Step 3.1 — Unit tests: normalization + wiring",
+  "generated_at": "2026-07-12T00:17:30.497841+00:00",
+  "summary": {
+    "total": 7,
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0
+  },
+  "results": [
+    {
+      "test_id": "R3-U01",
+      "name": "_normalize_enrich_mode('eager') -> 'eager'",
+      "status": "PASS",
+      "expected": {
+        "result": "eager"
+      },
+      "actual": {
+        "result": "eager"
+      },
+      "notes": "",
+      "ts": "2026-07-12T00:17:30.461483+00:00"
+    },
+    {
+      "test_id": "R3-U02",
+      "name": "_normalize_enrich_mode('on_demand') -> 'on_demand'",
+      "status": "PASS",
+      "expected": {
+        "result": "on_demand"
+      },
+      "actual": {
+        "result": "on_demand"
+      },
+      "notes": "",
+      "ts": "2026-07-12T00:17:30.472570+00:00"
+    },
+    {
+      "test_id": "R3-U03",
+      "name": "_normalize_enrich_mode(invalid/garbage) -> None, no raise",
+      "status": "PASS",
+      "expected": {
+        "garbage": null,
+        "near_miss": null,
+        "nonstring": null,
+        "trailing_space": null
+      },
+      "actual": {
+        "garbage": null,
+        "near_miss": null,
+        "nonstring": null,
+        "trailing_space": null
+      },
+      "notes": "Invalid values return None (caller falls back to default on_demand). Function lowercases but does not strip whitespace.",
+      "ts": "2026-07-12T00:17:30.476652+00:00"
+    },
+    {
+      "test_id": "R3-U04",
+      "name": "_normalize_enrich_mode(None/omitted) -> None (default)",
+      "status": "PASS",
+      "expected": {
+        "none": null,
+        "empty": null
+      },
+      "actual": {
+        "none": null,
+        "empty": null
+      },
+      "notes": "None/empty -> None; the FastAPI/CLI layers leave NEXORA_ENRICH_MODE unset, so settings.py applies its on_demand default.",
+      "ts": "2026-07-12T00:17:30.480286+00:00"
+    },
+    {
+      "test_id": "R3-U05",
+      "name": "CrawlRequest with enrich_mode omitted -> defaults applied",
+      "status": "PASS",
+      "expected": {
+        "enrich_mode": null
+      },
+      "actual": {
+        "enrich_mode": null
+      },
+      "notes": "Omitting enrich_mode yields None (server default on_demand).",
+      "ts": "2026-07-12T00:17:30.486763+00:00"
+    },
+    {
+      "test_id": "R3-U06",
+      "name": "CrawlRequest with enrich_mode set -> passed through unchanged",
+      "status": "PASS",
+      "expected": {
+        "enrich_mode": "eager"
+      },
+      "actual": {
+        "enrich_mode": "eager"
+      },
+      "notes": "An explicit eager/on_demand value is preserved verbatim.",
+      "ts": "2026-07-12T00:17:30.491028+00:00"
+    },
+    {
+      "test_id": "R3-U07",
+      "name": "CrawlResponse.enrich_mode echoes the mode actually used",
+      "status": "PASS",
+      "expected": {
+        "echoes_request_mode": true
+      },
+      "actual": {
+        "eager": "eager",
+        "on_demand": "on_demand",
+        "omitted": null
+      },
+      "notes": "Response.enrich_mode == request.enrich_mode for eager/on_demand/None.",
+      "ts": "2026-07-12T00:17:30.495455+00:00"
+    }
+  ]
+}

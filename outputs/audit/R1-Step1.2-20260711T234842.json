@@ -1,0 +1,133 @@
+{
+  "round": "R1",
+  "step": "Step 1.2 — Integration: offline enrich command",
+  "generated_at": "2026-07-11T23:48:42.291647+00:00",
+  "root_cause": "enrich.py references undefined helpers _build_crawler(), _collect_targets(), _enrich_row() (enrich.py:83,89,97) -> python enrich.py raises NameError before running.",
+  "summary": {
+    "total": 8,
+    "passed": 3,
+    "failed": 5
+  },
+  "results": [
+    {
+      "test_id": "R1-I01",
+      "name": "on_demand crawl -> enrich -> page gets summary/tags/vectors",
+      "status": "FAIL",
+      "expected": {
+        "enrich_succeeds": true,
+        "ai_summary_set": true
+      },
+      "actual": {
+        "enrich_raised": "NameError: name '_build_crawler' is not defined",
+        "ai_summary_set": false
+      },
+      "notes": "ROOT CAUSE: enrich.py references undefined helpers (_build_crawler/_collect_targets/_enrich_row, enrich.py:83,89,97) -> NameError before any work. Command is non-functional.",
+      "ts": "2026-07-11T23:48:33.713424+00:00"
+    },
+    {
+      "test_id": "R1-I02",
+      "name": "enrich twice -> no duplicate enrichment records",
+      "status": "FAIL",
+      "expected": {
+        "both_passes_succeed": true,
+        "storage_idempotent": true
+      },
+      "actual": {
+        "pass1_raised": "NameError: name '_build_crawler' is not defined",
+        "pass2_raised": "NameError: name '_build_crawler' is not defined",
+        "storage_idempotent": true,
+        "row_count": 1
+      },
+      "notes": "enrich.run raised on BOTH passes: NameError: name '_build_crawler' is not defined. Storage idempotency mechanism: OK (row_count=1).",
+      "ts": "2026-07-11T23:48:36.292933+00:00"
+    },
+    {
+      "test_id": "R1-I03",
+      "name": "search before enrich -> unenriched page 'not indexed yet' (no error)",
+      "status": "FAIL",
+      "expected": {
+        "enrich_succeeds": true,
+        "page_pending_before_enrich": true
+      },
+      "actual": {
+        "enrich_raised": "NameError: name '_build_crawler' is not defined",
+        "page_pending_before_enrich": true
+      },
+      "notes": "ROOT CAUSE: enrich.py references undefined helpers (_build_crawler/_collect_targets/_enrich_row, enrich.py:83,89,97) -> NameError before any work. Command is non-functional.",
+      "ts": "2026-07-11T23:48:36.431576+00:00"
+    },
+    {
+      "test_id": "R1-I04",
+      "name": "search after enrich -> enriched page returned by search normally",
+      "status": "FAIL",
+      "expected": {
+        "enrich_succeeds": true,
+        "page_indexed": true
+      },
+      "actual": {
+        "enrich_raised": "NameError: name '_build_crawler' is not defined",
+        "page_indexed": false
+      },
+      "notes": "ROOT CAUSE: enrich.py references undefined helpers (_build_crawler/_collect_targets/_enrich_row, enrich.py:83,89,97) -> NameError before any work. Command is non-functional.",
+      "ts": "2026-07-11T23:48:36.592287+00:00"
+    },
+    {
+      "test_id": "R1-I05",
+      "name": "full cycle E2E -> on_demand crawl -> enrich -> search matches eager",
+      "status": "FAIL",
+      "expected": {
+        "enrich_succeeds": true,
+        "e2e_enriched": true
+      },
+      "actual": {
+        "enrich_raised": "NameError: name '_build_crawler' is not defined",
+        "e2e_enriched": false
+      },
+      "notes": "ROOT CAUSE: enrich.py references undefined helpers (_build_crawler/_collect_targets/_enrich_row, enrich.py:83,89,97) -> NameError before any work. Command is non-functional.",
+      "ts": "2026-07-11T23:48:37.113234+00:00"
+    },
+    {
+      "test_id": "DIAG-S1",
+      "name": "[diagnostic] storage idempotency backing R1-I02",
+      "status": "PASS",
+      "expected": {
+        "still_selected": false,
+        "row_count": 1
+      },
+      "actual": {
+        "still_selected": false,
+        "row_count": 1
+      },
+      "notes": "Idempotency guarantee holds at storage layer (update -> page leaves unenriched set; single row, no duplicate).",
+      "ts": "2026-07-11T23:48:37.262068+00:00"
+    },
+    {
+      "test_id": "DIAG-S2",
+      "name": "[diagnostic] selection contract backing R1-I03",
+      "status": "PASS",
+      "expected": {
+        "page_returned_as_pending": true
+      },
+      "actual": {
+        "page_returned_as_pending": true
+      },
+      "notes": "Empty ai_summary page is returned by get_unenriched_pages (i.e. 'not indexed yet / pending'), no error.",
+      "ts": "2026-07-11T23:48:37.354943+00:00"
+    },
+    {
+      "test_id": "DIAG-V1",
+      "name": "[diagnostic] vector search contract backing R1-I04",
+      "status": "PASS",
+      "expected": {
+        "hits": 1,
+        "top_id": "c1"
+      },
+      "actual": {
+        "hits": 1,
+        "top_id": "c1"
+      },
+      "notes": "ChromaVectorStore add+search returns the indexed chunk normally (search path used by R1-I04 is healthy).",
+      "ts": "2026-07-11T23:48:42.288910+00:00"
+    }
+  ]
+}

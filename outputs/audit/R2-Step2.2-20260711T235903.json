@@ -1,0 +1,56 @@
+{
+  "round": "R2",
+  "step": "Step 2.2 — Unit tests: AI enrichment content",
+  "generated_at": "2026-07-11T23:59:03.790986+00:00",
+  "summary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0
+  },
+  "results": [
+    {
+      "test_id": "P4B-T03",
+      "name": "AI summary generation -> ai_summary is 2-3 coherent sentences",
+      "status": "PASS",
+      "expected": {
+        "summary_is_str": true,
+        "sentence_count": [
+          2,
+          3
+        ]
+      },
+      "actual": {
+        "summary_is_str": true,
+        "ai_summary": "Nexora crawls websites and extracts clean structured content. It enriches pages ...",
+        "sentence_count": 3
+      },
+      "notes": "Mocked LLM returns a 3-sentence summary; pipeline stores it as item['ai_summary']. Real content quality needs the HF router.",
+      "ts": "2026-07-11T23:59:03.774383+00:00"
+    },
+    {
+      "test_id": "P4B-T04",
+      "name": "AI tag generation -> ai_tags is a list of 3-5 relevant strings",
+      "status": "PASS",
+      "expected": {
+        "tags_is_list": true,
+        "count": [
+          3,
+          5
+        ]
+      },
+      "actual": {
+        "tags_is_list": true,
+        "count": 5,
+        "tags": [
+          "web crawling",
+          "AI enrichment",
+          "vector search",
+          "RAG",
+          "chunking"
+        ]
+      },
+      "notes": "Mocked LLM returns a JSON array; pipeline parses to item['ai_tags'] list of 5 strings (within 3-5).",
+      "ts": "2026-07-11T23:59:03.788261+00:00"
+    }
+  ]
+}

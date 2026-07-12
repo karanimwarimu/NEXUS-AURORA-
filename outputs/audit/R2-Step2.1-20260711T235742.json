@@ -1,0 +1,72 @@
+{
+  "round": "R2",
+  "step": "Step 2.1 — Unit tests: embedding engine",
+  "generated_at": "2026-07-11T23:57:42.424196+00:00",
+  "summary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0
+  },
+  "results": [
+    {
+      "test_id": "P4B-T01",
+      "name": "embed() returns a vector of the configured dimension (384)",
+      "status": "PASS",
+      "expected": {
+        "type": "list",
+        "dim": 384
+      },
+      "actual": {
+        "type": "list",
+        "dim": 384
+      },
+      "notes": "Mocked backend returns 384-dim; engine returns it unchanged. Real-vector generation needs the HF router / Ollama + network.",
+      "ts": "2026-07-11T23:57:42.357766+00:00"
+    },
+    {
+      "test_id": "P4B-T02",
+      "name": "embed_batch() returns a list; failures handled gracefully",
+      "status": "PASS",
+      "expected": {
+        "returns_list": true,
+        "empty_short_text": null,
+        "backend_failure": "no crash, None returned"
+      },
+      "actual": {
+        "base_ok": true,
+        "fail_ok": true
+      },
+      "notes": "Short text -> None; a raising backend yields None per item, batch still returns (no full-batch crash).",
+      "ts": "2026-07-11T23:57:42.385846+00:00"
+    },
+    {
+      "test_id": "P4B-T05",
+      "name": "exactly ONE embedding generated per page (no duplicate)",
+      "status": "PASS",
+      "expected": {
+        "embed_calls": 2
+      },
+      "actual": {
+        "embed_calls": 2
+      },
+      "notes": "Two pages processed -> embed() called exactly twice (once each). Pipeline calls embed once per item (markdown[:4000]).",
+      "ts": "2026-07-11T23:57:42.406861+00:00"
+    },
+    {
+      "test_id": "P4B-T11",
+      "name": "multi-provider switch is config-only (no code change)",
+      "status": "PASS",
+      "expected": {
+        "ollama_uses_litellm": true,
+        "openai_uses_litellm": true,
+        "huggingface_uses_legacy_hf_url": true
+      },
+      "actual": {
+        "routing_ok": true,
+        "switched": true
+      },
+      "notes": "Same UnifiedEmbeddingEngine class routes via the provider argument: ollama/openai -> LiteLLM aembedding; huggingface -> legacy HF feature-extraction URL. Switching = change provider arg/settings only.",
+      "ts": "2026-07-11T23:57:42.419292+00:00"
+    }
+  ]
+}

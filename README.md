@@ -1,11 +1,11 @@
-# NEXUS AURORA v4.2.1
+# NEXUS AURORA v4.3.0
 
-> AI-powered website intelligence platform with static-first routing, browser-aware extraction, multi-format storage engine, AI enrichment, and vector indexing for production-grade RAG and web intelligence workflows.
+> AI-powered website intelligence platform with static-first routing, browser-aware extraction, multi-format storage engine, on-demand AI enrichment (default), eager inline enrichment (fallback), and vector indexing for production-grade RAG and web intelligence workflows.
 
-[![Version](https://img.shields.io/badge/version-4.2.1-blue)]()
+[![Version](https://img.shields.io/badge/version-4.3.0-blue)]()
 [![Python](https://img.shields.io/badge/python-3.11+-green)]()
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
-[![Status](https://img.shields.io/badge/status-phase%204B%20vector%20indexing-brightgreen)]()
+[![Status](https://img.shields.io/badge/status-phase%204B%20tested-brightgreen)]()
 
 ---
 
@@ -41,13 +41,24 @@
 
 **NEXUS AURORA** (codename: **Nexora**) is a Python web intelligence pipeline with an intelligent **static-first routing engine** and a **multi-format storage infrastructure**. It probes each URL via lightweight HTTP, decides if JavaScript rendering is needed using 8 detection signals, routes accordingly — saving 150-300MB RAM per page for static sites — then transforms raw HTML into clean, structured, multi-format outputs for human analysts, ML pipelines, and RAG systems.
 
-On top of the Phase 4A storage engine, **v4.2.1 completes Phase 4B**: per-page AI summarization and tagging, sentence-transformers embeddings via the Hugging Face router, structural chunking, and vector indexing into Chroma (local) or pgvector/Supabase (production) — all behind a provider-agnostic interface so the embedding model, AI provider, and vector backend are **settings-only changes**.
+On top of the Phase 4A storage engine, **v4.3.0 completes Phase 4B verification**: per-page AI summarization and tagging, sentence-transformers embeddings via the Hugging Face router, structural chunking, and vector indexing into Chroma (local) or pgvector/Supabase (production) — all behind a provider-agnostic interface. **Crawl and enrichment are now decoupled:** by default (`on_demand` mode), crawls are fast with no AI calls. AI enrichment runs later via the offline `enrich.py` command or inline via `eager` mode.
 
-> **Current Phase: 4B (v4.2.1)** — AI enrichment, embeddings, chunking, and vector indexing are implemented and verified end-to-end (124 records indexed in a live Chroma run).
+> **Current Phase: 4B (v4.3.0)** — 45 tests executed (39 PASS, 5 FAIL, 1 SKIP). Enrichment decoupling, Phase 4B pipelines, and multi-entrypoint wiring verified. See `outputs/audit/NEXORA_PHASE4B_TEST_SUMMARY.md`.
 
 ---
 
-## What's New in v4.2.1
+## What's New in v4.3.0
+
+| Feature | Description |
+|---------|-------------|
+| **On-Demand Enrichment** | `NEXORA_ENRICH_MODE` flag (`"eager"` \| `"on_demand"`). Default: `"on_demand"` — fast crawls with no AI calls. Enrich later via `enrich.py`. |
+| **Offline `enrich.py` command** | Reuses existing Phase 4B pipelines over saved pages. Supports `--url`, `--domain`, `--crawl-id`, `--limit`. |
+| **Full markdown storage** | `markdown` column stores full cleaned text (no 500-char truncation). Schema migration preserves existing data. |
+| **Multi-entrypoint wiring** | FastAPI, interactive CLI, direct CLI all support `enrich_mode` selection. Settings reloaded in-process for direct CLI. |
+| **Phase 4B test verification** | 45 tests across 3 rounds. Unit, integration, and regression coverage for all pipelines. |
+| **Bug fixes** | `vector_backend` field added to items; `_migrate_schema()` for DB compat; `_truncate_text()` for clean prompt boundaries. |
+
+### v4.2.1 (Previous Release)
 
 | Feature | Description |
 |---------|-------------|
@@ -96,12 +107,14 @@ On top of the Phase 4A storage engine, **v4.2.1 completes Phase 4B**: per-page A
 - **Parquet export** — Columnar, compressed storage for ML pipelines (snappy compression, < 30% of equivalent JSON)
 - **One crawl → multiple formats** — Markdown + JSON + CSV + Parquet + SQLite from a single pass
 
-### Phase 4B — AI Enrichment & Vector Indexing (NEW)
+### Phase 4B — AI Enrichment & Vector Indexing
+- **On-demand enrichment** — Crawl is decoupled from AI. Default `on_demand` mode saves cleaned markdown only. Run `enrich.py` later to generate summaries, tags, and vectors.
 - **AI summary + tags** — LLM-generated per page (LiteLLM against the HF router)
 - **Embeddings** — sentence-transformers vectors via the HF router's legacy `feature-extraction` endpoint (the OpenAI-compatible `/v1/embeddings` does **not** support ST models)
-- **Structural chunking** — Markdown split at heading/paragraph boundaries with overlap
+- **Structural chunking** — Markdown split at heading/paragraph boundaries with overlap (~512 tokens)
 - **Vector store** — Chroma (local) or pgvector/Supabase (production), behind one interface
 - **Provider-agnostic** — switch embedding model, AI provider, or vector backend via settings only
+- **Tested end-to-end** — 45-test verification suite (39 PASS), covering unit, integration, and regression
 
 ---
 
@@ -352,9 +365,39 @@ Phase 4A pipelines run automatically as part of the Scrapy pipeline chain. No ad
 | JSON/CSV | `output/pages/` | Per-page exports (existing) |
 
 ### Phase 4B — AI Enrichment & Vector Indexing
-Phase 4B pipelines also run automatically in the chain. They require a Hugging Face token in `.env` (`NEXORA_AI_API_KEY`). A crawl that reaches the vector stage writes one `VectorRecord` per chunk into the configured backend (Chroma by default, at `data/chroma`).
 
-Verify the AI + vector stack before/after a crawl:
+#### On-Demand Mode (Default)
+Crawls are fast — no AI calls. Just fetch, clean, and save:
+```powershell
+cd "Nexora application/Crawler"
+scrapy crawl nexora -a urls="https://example.com"
+```
+
+Later, enrich saved pages offline:
+```powershell
+cd "Nexora application/Crawler"
+python enrich.py                      # enrich all unenriched pages
+python enrich.py --domain example.com
+python enrich.py --limit 50
+```
+
+#### Eager Mode (Inline Enrichment)
+For immediate AI enrichment during the crawl:
+```powershell
+# Via env var
+set NEXORA_ENRICH_MODE=eager
+scrapy crawl nexora -a urls="https://example.com"
+
+# Via direct CLI
+python -m nexora_crawler.api --url https://example.com --enrich-mode eager
+
+# Via FastAPI
+curl -X POST http://localhost:8000/crawl \
+  -H 'Content-Type: application/json' \
+  -d '{"url": "https://example.com", "strategy": "single-page", "enrich_mode": "eager"}'
+```
+
+#### Verify the AI + Vector Stack
 ```powershell
 cd "Nexora application/Crawler"
 
@@ -426,6 +469,7 @@ Key settings in `Crawler/nexora_crawler/settings.py` (also overridable in `.env`
 | `ROBOTSTXT_OBEY` | `True` | Respect robots.txt |
 | `DOWNLOAD_DELAY` | `1.5` | Base delay between requests (seconds) |
 | `AUTOTHROTTLE_ENABLED` | `True` | Adapt delay to server response time |
+| `NEXORA_ENRICH_MODE` | `on_demand` | `"on_demand"` (fast, no AI) \| `"eager"` (inline enrichment) |
 | `NEXORA_AI_ENABLED` | `True` | Enable Phase 4B AI enrichment |
 | `NEXORA_AI_PROVIDER` | `huggingface` | `huggingface` / `ollama` / `openai` / `anthropic` |
 | `NEXORA_AI_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | LLM for summary/tags |
@@ -455,7 +499,13 @@ python -m nexora_crawler.pipelines.test_ai
 
 # Phase 4B — Chroma storage & retrieval round-trip
 python -m nexora_crawler.pipelines.test_vector_store
+
+# Phase 4B — Comprehensive verification (45-test suite)
+python -m pytest outputs/audit/audit_round3_step3_2.py -v
+python -m pytest outputs/audit/audit_round3_step3_3.py -v
 ```
+
+Full test results: `outputs/audit/NEXORA_PHASE4B_TEST_SUMMARY.md`
 
 ---
 
@@ -478,14 +528,14 @@ All three are **settings-only changes** — no code changes required. See [`Proj
 | **2.6** | ✅ Complete | FastAPI REST API + interactive CLI + sitemap discovery |
 | **3** | ✅ Complete (3.4) | DynamicDetectionMiddleware with 8-signal engine, 85-90% accuracy |
 | **4A** | ✅ Complete (v4.1.0) | Storage & Multi-Format Ingestion Engine |
-| **4B** | ✅ Complete (v4.2.1) | AI enrichment, embeddings, chunking, vector indexing |
+| **4B** | ✅ Complete + Tested (v4.3.0) | AI enrichment, embeddings, chunking, vector indexing. On-demand enrichment rework. 45-test verification suite (39 PASS). |
 | **5** | 📋 Planned | Distributed crawling, shared profile cache |
 | **6** | 📋 Planned | Tauri desktop application |
 | **7** | 📋 Planned | Hybrid search, list_all for migration tooling |
 
 ---
 
-## Known Limitations (v4.2.1)
+## Known Limitations (v4.3.0)
 
 - **Page-level embeddings:** The embedding is generated once per page (on the whole Markdown) and **inherited by all chunks**. Retrieval therefore behaves at page granularity until per-chunk embeddings are implemented.
 - **HF router rate limits:** The free HF router can return 429/503; the pipeline degrades gracefully (skips embedding, logs a warning) so the crawl continues.
@@ -494,6 +544,8 @@ All three are **settings-only changes** — no code changes required. See [`Proj
 - **Angular production builds** — `ng-version=` attribute is removed; detection relies on bundle patterns.
 - **No auth** — FastAPI endpoints are open; job store is in-memory only.
 - **Parquet requires pandas+pyarrow** — must be installed separately.
+- **enrich.py non-functional** — Missing `_build_crawler()`, `_collect_targets()`, `_enrich_row()` helpers. See `outputs/audit/BUG_enrich_py_missing_helpers.md`.
+- **Full live end-to-end not run** — Requires fastapi/uvicorn/scrapy/network/HF token in a real environment.
 
 ---
 
@@ -504,5 +556,5 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <strong>NEXUS AURORA v4.2.1</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
+  <strong>NEXUS AURORA v4.3.0</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
 </p>

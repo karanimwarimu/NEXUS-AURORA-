@@ -1,0 +1,71 @@
+{
+  "round": "R2",
+  "step": "Step 2.3 — Unit tests: chunking",
+  "generated_at": "2026-07-12T00:00:18.118721+00:00",
+  "summary": {
+    "total": 3,
+    "passed": 2,
+    "failed": 1
+  },
+  "results": [
+    {
+      "test_id": "P4B-T06",
+      "name": "full markdown -> split into ~512-token chunks",
+      "status": "FAIL",
+      "expected": {
+        "splits": true,
+        "chunk_count>=": 2,
+        "token_band": [
+          100,
+          1024
+        ]
+      },
+      "actual": {
+        "chunk_count": 4,
+        "sizes": [
+          539,
+          1080,
+          1260,
+          1260
+        ],
+        "chunk_count_field": 4
+      },
+      "notes": "Long markdown split into multiple chunks. Sizes include the ~128-token overlap overhead; band [100, 1024] with target ~512.",
+      "ts": "2026-07-12T00:00:17.317932+00:00"
+    },
+    {
+      "test_id": "P4B-T07",
+      "name": "adjacent chunk boundaries share ~128 tokens of overlap",
+      "status": "PASS",
+      "expected": {
+        "adjacent_overlap": true
+      },
+      "actual": {
+        "chunk_count": 4,
+        "pairs_checked": 3,
+        "overlaps_ok": true
+      },
+      "notes": "Every chunk after the first begins with the previous chunk's tail (~128 tokens / 384 words) per _get_overlap_text.",
+      "ts": "2026-07-12T00:00:18.089957+00:00"
+    },
+    {
+      "test_id": "P4B-T08",
+      "name": "chunk metadata retains heading hierarchy per chunk",
+      "status": "PASS",
+      "expected": {
+        "some_chunk_has_heading_chain": true,
+        "sectionA_present": true,
+        "sectionB_present": true,
+        "format_Hn": true
+      },
+      "actual": {
+        "chunks_with_chain": 4,
+        "sectionA": true,
+        "sectionB": true,
+        "format_ok": true
+      },
+      "notes": "Chunks under '## Section A/B' carry heading_chain like ['H2: Section A', ...]; format verified as 'H{n}: text'.",
+      "ts": "2026-07-12T00:00:18.116219+00:00"
+    }
+  ]
+}

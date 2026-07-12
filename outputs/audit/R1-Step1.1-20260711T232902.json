@@ -1,0 +1,104 @@
+{
+  "round": "R1",
+  "step": "Step 1.1 — Unit tests: flag + storage",
+  "generated_at": "2026-07-11T23:29:02.359959+00:00",
+  "summary": {
+    "total": 6,
+    "passed": 5,
+    "failed": 1
+  },
+  "results": [
+    {
+      "test_id": "R1-U01",
+      "name": "NEXORA_ENRICH_MODE=eager read from settings",
+      "status": "PASS",
+      "expected": {
+        "NEXORA_ENRICH_MODE": "eager"
+      },
+      "actual": {
+        "NEXORA_ENRICH_MODE": "eager"
+      },
+      "notes": "",
+      "ts": "2026-07-11T23:29:01.676930+00:00"
+    },
+    {
+      "test_id": "R1-U02",
+      "name": "NEXORA_ENRICH_MODE=on_demand read from settings",
+      "status": "PASS",
+      "expected": {
+        "NEXORA_ENRICH_MODE": "on_demand"
+      },
+      "actual": {
+        "NEXORA_ENRICH_MODE": "on_demand"
+      },
+      "notes": "",
+      "ts": "2026-07-11T23:29:01.692449+00:00"
+    },
+    {
+      "test_id": "R1-U03",
+      "name": "No env var set -> documented default",
+      "status": "PASS",
+      "expected": {
+        "NEXORA_ENRICH_MODE": "on_demand"
+      },
+      "actual": {
+        "NEXORA_ENRICH_MODE": "on_demand"
+      },
+      "notes": "documented default = 'on_demand'",
+      "ts": "2026-07-11T23:29:01.710427+00:00"
+    },
+    {
+      "test_id": "R1-U04",
+      "name": "eager mode -> enrichment pipelines wired inline",
+      "status": "PASS",
+      "expected": {
+        "enrichment_pipelines_present": true,
+        "keys": [
+          "nexora_crawler.pipelines.ai_enrichment.AIEnrichmentPipeline",
+          "nexora_crawler.pipelines.chunking_pipeline.StructuralChunkingPipeline",
+          "nexora_crawler.pipelines.vector_index_pipeline.VectorIndexPipeline"
+        ]
+      },
+      "actual": {
+        "enrichment_pipelines_present": true,
+        "found": [
+          "nexora_crawler.pipelines.ai_enrichment.AIEnrichmentPipeline",
+          "nexora_crawler.pipelines.chunking_pipeline.StructuralChunkingPipeline",
+          "nexora_crawler.pipelines.vector_index_pipeline.VectorIndexPipeline"
+        ]
+      },
+      "notes": "",
+      "ts": "2026-07-11T23:29:01.725891+00:00"
+    },
+    {
+      "test_id": "R1-U05",
+      "name": "on_demand mode -> enrichment pipelines NOT wired inline",
+      "status": "PASS",
+      "expected": {
+        "enrichment_pipelines_present": false
+      },
+      "actual": {
+        "enrichment_pipelines_present": false,
+        "found": []
+      },
+      "notes": "",
+      "ts": "2026-07-11T23:29:01.744356+00:00"
+    },
+    {
+      "test_id": "R1-U06",
+      "name": "save-page persists full markdown (no 500-char truncation)",
+      "status": "FAIL",
+      "expected": {
+        "markdown_length": 1550,
+        "persisted_fully": true
+      },
+      "actual": {
+        "markdown_length": 1550,
+        "stored_direct_len": 1550,
+        "stored_via_pipe_len": null
+      },
+      "notes": "Old behavior used a 500-char 'markdown_preview'; rework persists full text.",
+      "ts": "2026-07-11T23:29:01.861285+00:00"
+    }
+  ]
+}

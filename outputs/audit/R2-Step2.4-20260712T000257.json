@@ -1,0 +1,47 @@
+{
+  "round": "R2",
+  "step": "Step 2.4 — Integration: vector store + search",
+  "generated_at": "2026-07-12T00:02:57.966811+00:00",
+  "summary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0
+  },
+  "results": [
+    {
+      "test_id": "P4B-T09",
+      "name": "insert chunks into ChromaDB -> count increases correctly",
+      "status": "PASS",
+      "expected": {
+        "before": 0,
+        "after": 5,
+        "ids_returned": 5
+      },
+      "actual": {
+        "before": 0,
+        "after": 5,
+        "ids_returned": 5
+      },
+      "notes": "ChromaVectorStore.add() persisted 5 records; count went 0 -> 5.",
+      "ts": "2026-07-12T00:02:57.642085+00:00"
+    },
+    {
+      "test_id": "P4B-T10",
+      "name": "semantic search returns relevant chunks, ranked by similarity",
+      "status": "PASS",
+      "expected": {
+        "top_id": "rel",
+        "top_score>": 0.9,
+        "ranked_desc": true
+      },
+      "actual": {
+        "top_id": "rel",
+        "top_score": 1.0,
+        "n_hits": 2,
+        "ranked": true
+      },
+      "notes": "Query identical to 'rel' embedding -> top hit 'rel' with score ~1.0; results sorted by descending similarity.",
+      "ts": "2026-07-12T00:02:57.962008+00:00"
+    }
+  ]
+}
