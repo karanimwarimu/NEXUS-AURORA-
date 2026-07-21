@@ -30,9 +30,6 @@ class MetadataIndexerPipeline:
         return obj
 
     async def process_item(self, item):
-        if item.get("__skip"):
-            return item
-
         success = self.store.insert_page(dict(item))
         if success:
             self.stats["indexed"] += 1

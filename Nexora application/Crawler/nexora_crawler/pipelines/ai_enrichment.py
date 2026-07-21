@@ -38,33 +38,58 @@ class AIEnrichmentPipeline:
         self.max_concurrent = self.settings.getint('NEXORA_AI_MAX_CONCURRENT', 3)
         self.semaphore = asyncio.Semaphore(self.max_concurrent)
 
-        # Unified embedding engine (SINGLE SOURCE OF TRUTH)
-        self.embeddings_enabled = self.settings.getbool('NEXORA_EMBEDDINGS_ENABLED', False) # to enable or disable embeddings in the pipeline. This allows for flexibility in testing and deployment without changing the code.
-        if self.embeddings_enabled:
-            self.embedding_engine = UnifiedEmbeddingEngine(
-                provider=self.provider,
-                model=self.settings.get('NEXORA_AI_EMBEDDING_MODEL', 'nomic-embed-text'),
-                base_url=self.base_url,
-                api_key=self.api_key,
-                timeout=self.timeout,
-                max_concurrent=self.max_concurrent,
-            )
-        else:
-            self.embedding_engine = None
+        # Circuit breaker: after N consecutive LLM-call failures, stop issuing
+        # calls for the rest of the run (a dead/quota-exhausted provider must
+        # not stall the crawl). Threshold <= 0 disables the breaker.
+        self.failfast_threshold = self.settings.getint('NEXORA_AI_FAILFAST_THRESHOLD', 3)
+        self._consecutive_failures = 0
+        self._breaker_open = False
+
+        # Fallback LLM provider: when the primary breaker opens, LLM calls
+        # are retried here. Empty means no fallback — breaker just skips.
+        self.fallback_provider = self.settings.get('NEXORA_AI_FALLBACK_PROVIDER', '')
+        self.fallback_model = self.settings.get('NEXORA_AI_FALLBACK_MODEL', self.model)
+        self.fallback_base_url = self.settings.get('NEXORA_AI_FALLBACK_BASE_URL', self.base_url)
+        self.fallback_api_key = self.settings.get('NEXORA_AI_FALLBACK_API_KEY', self.api_key)
 
         self.stats = {
             "summaries_generated": 0,
             "tags_generated": 0,
-            "embeddings_generated": 0,
             "ai_errors": 0,
+            "pages_skipped_by_breaker": 0,
         }
         
     @classmethod
     def from_crawler(cls, crawler):
         return cls(crawler)
 
+    def _record_failure(self):
+        self._consecutive_failures += 1
+        if (self.failfast_threshold > 0
+                and not self._breaker_open
+                and self._consecutive_failures >= self.failfast_threshold):
+            self._breaker_open = True
+            if self.fallback_provider:
+                logger.warning(
+                    "[AI] Primary breaker OPEN after %d consecutive LLM failures — "
+                    "falling back to %s/%s for subsequent calls.",
+                    self._consecutive_failures,
+                    self.fallback_provider,
+                    self.fallback_model,
+                )
+            else:
+                logger.warning(
+                    "[AI] Circuit breaker OPEN after %d consecutive LLM failures — "
+                    "AI enrichment disabled for the remainder of this run.",
+                    self._consecutive_failures)
+
     async def process_item(self, item) -> dict:
         if not self.enabled:
+            return item
+
+        if self._breaker_open and not self.fallback_provider:
+            item["ai_status"] = "skipped_after_failures"
+            self.stats["pages_skipped_by_breaker"] += 1
             return item
 
         markdown = item.get("markdown", "")
@@ -73,20 +98,10 @@ class AIEnrichmentPipeline:
 
         try:
             async with self.semaphore:
-                # Run summary, tags, and embedding in parallel.
-                # return_exceptions=True => if one call fails (e.g. HF host
-                # unreachable), the others still complete instead of the whole
-                # batch being cancelled. This keeps the pipeline flowing even
-                # when the AI/embedding backend is down.
                 tasks = [self._generate_summary(markdown), self._generate_tags(markdown)]
-                if self.embeddings_enabled and self.embedding_engine:
-                    tasks.append(self.embedding_engine.embed(markdown[:4000]))
-                else:
-                    tasks.append(asyncio.sleep(0))
-
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            summary, tags, embedding = results
+            summary, tags = results
 
             if isinstance(summary, Exception):
                 logger.warning("[AI] Summary generation failed: %s", summary)
@@ -99,13 +114,6 @@ class AIEnrichmentPipeline:
                 self.stats["ai_errors"] += 1
             else:
                 item["ai_tags"] = tags
-
-            if isinstance(embedding, Exception):
-                logger.warning("[AI] Embedding generation failed: %s", embedding)
-                self.stats["ai_errors"] += 1
-            elif embedding:
-                item["ai_embedding"] = embedding
-                self.stats["embeddings_generated"] += 1
 
         except Exception as exc:
             # Last-resort guard — a AI failure must never stop the crawl.
@@ -141,20 +149,34 @@ class AIEnrichmentPipeline:
 
         Summary:"""
 
+        provider = self.provider
+        model = self.model
+        base_url = self.base_url
+        api_key = self.api_key
+
+        # Switch to fallback if primary breaker is open
+        if self._breaker_open and self.fallback_provider:
+            provider = self.fallback_provider
+            model = self.fallback_model
+            base_url = self.fallback_base_url
+            api_key = self.fallback_api_key
+
         try:
             response = await acompletion(
-                model=f'{self.provider}/{self.model}',
+                model=f'{provider}/{model}',
                 messages=[{'role': 'user', 'content': prompt}],
-                api_base=self.base_url,
-                api_key=self.api_key,
+                api_base=base_url,
+                api_key=api_key,
                 timeout=self.timeout,
                 max_tokens=200,
             )
             summary = response.choices[0].message.content.strip()
             self.stats["summaries_generated"] += 1
+            self._consecutive_failures = 0
             return summary
         except Exception as exc:
             logger.warning("[AI] Summary generation failed: %s", exc)
+            self._record_failure()
             return ""
 
     async def _generate_tags(self, text: str) -> List[str]:
@@ -167,12 +189,24 @@ class AIEnrichmentPipeline:
 
             Tags (JSON array):"""
 
+        provider = self.provider
+        model = self.model
+        base_url = self.base_url
+        api_key = self.api_key
+
+        # Switch to fallback if primary breaker is open
+        if self._breaker_open and self.fallback_provider:
+            provider = self.fallback_provider
+            model = self.fallback_model
+            base_url = self.fallback_base_url
+            api_key = self.fallback_api_key
+
         try:
             response = await acompletion(
-                model=f'{self.provider}/{self.model}',
+                model=f'{provider}/{model}',
                 messages=[{'role': 'user', 'content': prompt}],
-                api_base=self.base_url,
-                api_key=self.api_key,
+                api_base=base_url,
+                api_key=api_key,
                 timeout=self.timeout,
                 max_tokens=100,
             )
@@ -184,12 +218,12 @@ class AIEnrichmentPipeline:
             else:
                 tags = [t.strip() for t in content.split(',')]
             self.stats["tags_generated"] += 1
+            self._consecutive_failures = 0
             return tags[:5]
         except Exception as exc:
             logger.warning("[AI] Tag generation failed: %s", exc)
+            self._record_failure()
             return []
 
     def close_spider(self):
         logger.info("[AI] Pipeline stats: %s", self.stats)
-        if self.embedding_engine:
-            logger.info("[EmbeddingEngine] Stats: %s", self.embedding_engine.get_stats())

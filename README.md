@@ -2,7 +2,7 @@
 
 > AI-powered website intelligence platform with static-first routing, browser-aware extraction, multi-format storage engine, on-demand AI enrichment (default), eager inline enrichment (fallback), and vector indexing for production-grade RAG and web intelligence workflows.
 
-[![Version](https://img.shields.io/badge/version-4.3.0-blue)]()
+[![Version](https://img.shields.io/badge/version-4.4.0-blue)]()
 [![Python](https://img.shields.io/badge/python-3.11+-green)]()
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
 [![Status](https://img.shields.io/badge/status-phase%204B%20tested-brightgreen)]()
@@ -43,11 +43,26 @@
 
 On top of the Phase 4A storage engine, **v4.3.0 completes Phase 4B verification**: per-page AI summarization and tagging, sentence-transformers embeddings via the Hugging Face router, structural chunking, and vector indexing into Chroma (local) or pgvector/Supabase (production) — all behind a provider-agnostic interface. **Crawl and enrichment are now decoupled:** by default (`on_demand` mode), crawls are fast with no AI calls. AI enrichment runs later via the offline `enrich.py` command or inline via `eager` mode.
 
-> **Current Phase: 4B (v4.3.0)** — 45 tests executed (39 PASS, 5 FAIL, 1 SKIP). Enrichment decoupling, Phase 4B pipelines, and multi-entrypoint wiring verified. See `outputs/audit/NEXORA_PHASE4B_TEST_SUMMARY.md`.
+> **Current Phase: 4B (v4.4.0)** — 14-step debug campaign complete. All P0/P1 runtime bugs from the 2026-07-20 QA run fixed and verified. Provider fallback architecture added. See `outputs/qa_run_20260720/NEXORA_DEBUG_REPORT.md`.
 
 ---
 
-## What's New in v4.3.0
+## What's New in v4.4.0
+
+| Feature | Description |
+|---------|-------------|
+| **14-step debug campaign** | Live 10-test QA run (2026-07-20) exposed 6 runtime bugs + 1 split-brain path bug. All fixed and verified. |
+| **`__skip` crash fixed** | Duplicate pages now cleanly drop via `scrapy.exceptions.DropItem` instead of crashing with `KeyError`. Recovered ~5–60% of items on dup-heavy sites. |
+| **MarkdownPipeline srcset crash fixed** | `_descriptor_weight()` and `_safe_dimension()` handle `2x`/`100%`/`auto`/trailing-comma srcsets. Wikipedia RAG-blocking crash eliminated. |
+| **robots.txt enforcement fixed** | `ContentTypeFilterMiddleware` now lets `/robots.txt` and `sitemap*.xml` through before content-type blocking. 38 forbidden URLs observed on Wikipedia post-fix. |
+| **Parquet empty-struct fix** | Catch-all JSON-stringify prevents PyArrow `struct<>` inference from unwritable empty dicts. Parquet rows exported: 0 → >0 in affected runs. |
+| **Eager-mode circuit breaker** | After 3 consecutive AI failures, all further calls are skipped for the run. Prevents multi-hour timeout drains from dead/quota-exhausted providers. |
+| **Provider fallback architecture** | New `NEXORA_AI_FALLBACK_PROVIDER/MODEL/BASE_URL/API_KEY` settings. When primary breaker opens, embeddings and LLM calls transparently route to a secondary provider. |
+| **Split-brain DB path fix** | `NEXORA_METADATA_DB` and `NEXORA_CHROMA_PATH` resolved against settings file directory, not CWD. `enrich.py` now operates on real crawl data. |
+| **Action-link crawl hygiene** | `/vote`, `/hide`, `/submit` path patterns + `action=`/`mobileaction=` query param blocking. Prevents 429 storms from action endpoints. |
+| **Test 02 fixture refreshed** | Dead `react-shopping-cart-67007.firebaseapp.com` (404) replaced with live `react-shopping-cart-67954.firebaseapp.com` (200). |
+
+### v4.3.0 (Previous Release)
 
 | Feature | Description |
 |---------|-------------|
@@ -56,7 +71,6 @@ On top of the Phase 4A storage engine, **v4.3.0 completes Phase 4B verification*
 | **Full markdown storage** | `markdown` column stores full cleaned text (no 500-char truncation). Schema migration preserves existing data. |
 | **Multi-entrypoint wiring** | FastAPI, interactive CLI, direct CLI all support `enrich_mode` selection. Settings reloaded in-process for direct CLI. |
 | **Phase 4B test verification** | 45 tests across 3 rounds. Unit, integration, and regression coverage for all pipelines. |
-| **Bug fixes** | `vector_backend` field added to items; `_migrate_schema()` for DB compat; `_truncate_text()` for clean prompt boundaries. |
 
 ### v4.2.1 (Previous Release)
 
@@ -112,9 +126,12 @@ On top of the Phase 4A storage engine, **v4.3.0 completes Phase 4B verification*
 - **AI summary + tags** — LLM-generated per page (LiteLLM against the HF router)
 - **Embeddings** — sentence-transformers vectors via the HF router's legacy `feature-extraction` endpoint (the OpenAI-compatible `/v1/embeddings` does **not** support ST models)
 - **Structural chunking** — Markdown split at heading/paragraph boundaries with overlap (~512 tokens)
+- **Per-chunk embeddings** — Each chunk gets its own embedding via `embed_batch()` (replaces inherited page-level embedding)
+- **Circuit breaker** — After N consecutive AI failures, calls are skipped for the rest of the run to prevent timeout drains
+- **Provider fallback** — Optional secondary provider (e.g. local Ollama) takes over when primary quota is exhausted
 - **Vector store** — Chroma (local) or pgvector/Supabase (production), behind one interface
 - **Provider-agnostic** — switch embedding model, AI provider, or vector backend via settings only
-- **Tested end-to-end** — 45-test verification suite (39 PASS), covering unit, integration, and regression
+- **Tested end-to-end** — 45-test verification suite (39 PASS) + 14-step debug campaign (Steps 1–14 complete)
 
 ---
 
@@ -480,6 +497,12 @@ Key settings in `Crawler/nexora_crawler/settings.py` (also overridable in `.env`
 | `NEXORA_CHROMA_PATH` | `./data/chroma` | Chroma persistence path |
 | `NEXORA_CHUNK_SIZE` | `512` | Target tokens per chunk |
 | `NEXORA_CHUNK_OVERLAP` | `128` | Overlap tokens between chunks |
+| `NEXORA_AI_FAILFAST_THRESHOLD` | `3` | Consecutive AI failures before breaker opens (0 = disabled) |
+| `NEXORA_AI_FALLBACK_PROVIDER` | `""` | Secondary provider when primary breaker opens (empty = no fallback) |
+| `NEXORA_AI_FALLBACK_MODEL` | `""` | Secondary provider model |
+| `NEXORA_AI_FALLBACK_BASE_URL` | `""` | Secondary provider base URL (empty = no fallback) |
+| `NEXORA_AI_FALLBACK_API_KEY` | `""` | Secondary provider API key |
+| `NEXORA_AI_FALLBACK_API_KEY` | `""` | Secondary provider API key |
 
 ---
 
@@ -528,24 +551,34 @@ All three are **settings-only changes** — no code changes required. See [`Proj
 | **2.6** | ✅ Complete | FastAPI REST API + interactive CLI + sitemap discovery |
 | **3** | ✅ Complete (3.4) | DynamicDetectionMiddleware with 8-signal engine, 85-90% accuracy |
 | **4A** | ✅ Complete (v4.1.0) | Storage & Multi-Format Ingestion Engine |
-| **4B** | ✅ Complete + Tested (v4.3.0) | AI enrichment, embeddings, chunking, vector indexing. On-demand enrichment rework. 45-test verification suite (39 PASS). |
+| **4B** | ✅ Complete + Tested (v4.4.0) | AI enrichment, embeddings, chunking, vector indexing. 14-step debug campaign (Steps 1–14) fixed all P0/P1 runtime bugs. Provider fallback added. |
 | **5** | 📋 Planned | Distributed crawling, shared profile cache |
 | **6** | 📋 Planned | Tauri desktop application |
 | **7** | 📋 Planned | Hybrid search, list_all for migration tooling |
 
 ---
 
-## Known Limitations (v4.3.0)
+## Known Limitations (v4.4.0)
 
-- **Page-level embeddings:** The embedding is generated once per page (on the whole Markdown) and **inherited by all chunks**. Retrieval therefore behaves at page granularity until per-chunk embeddings are implemented.
-- **HF router rate limits:** The free HF router can return 429/503; the pipeline degrades gracefully (skips embedding, logs a warning) so the crawl continues.
-- **Chroma dimension lock:** Switching embedding models with a different dimension requires wiping `data/chroma` before re-crawling.
-- **Network-dependent** — ~12% of sites may timeout; these correctly fallback to Playwright but add latency.
-- **Angular production builds** — `ng-version=` attribute is removed; detection relies on bundle patterns.
-- **No auth** — FastAPI endpoints are open; job store is in-memory only.
-- **Parquet requires pandas+pyarrow** — must be installed separately.
-- **enrich.py non-functional** — Missing `_build_crawler()`, `_collect_targets()`, `_enrich_row()` helpers. See `outputs/audit/BUG_enrich_py_missing_helpers.md`.
-- **Full live end-to-end not run** — Requires fastapi/uvicorn/scrapy/network/HF token in a real environment.
+- **Full re-validation matrix not yet re-run** — Tests 06/07/08 need full-scale re-runs with working AI provider + Playwright active (deferred per operator).
+- **Step 11/12/13/14 live validation pending** — unit checks and code changes done; live crawl verification blocked on environment readiness (Playwright chromium, HF quota/top-up or local Ollama).
+- **`crawl_id` not populated** — schema enricher never sets it; `--crawl-id` filtering returns all rows for now.
+- **Chunk size overshoot** — avg ≈ 680 tokens/chunk vs 512 target (overlap-driven; tracked as nice-to-have).
+
+### Resolved in v4.4.0
+
+- ~~Page-level embeddings inherited by chunks~~ — Per-chunk embeddings via `embed_batch()` in `StructuralChunkingPipeline`.
+- ~~`__skip` KeyError on duplicates~~ — `DropItem` used instead; 124 items lost in QA run → 0.
+- ~~MarkdownPipeline srcset `2x` crash~~ — `_descriptor_weight()` + `_safe_dimension()` handle all srcset/dimension edge cases.
+- ~~robots.txt silently blocked~~ — `_INFRA_PATH_RE` pass-through; robots rules now enforced.
+- ~~Parquet empty-struct export failure~~ — Catch-all JSON-stringify prevents unwritable `struct<>` inference.
+- ~~Eager-mode pipeline-drain hang~~ — Circuit breaker opens after 3 consecutive AI failures.
+- ~~Split-brain metadata DB~~ — `_anchored_path()` resolves relative paths against settings file directory.
+- ~~`enrich.py` missing helpers~~ — `_build_crawler()`, `_collect_targets()`, `_enrich_row()` implemented.
+- ~~`enrich.py --limit` None crash~~ — `_limit_clause()` omits LIMIT when `None`; filter + cap compose correctly.
+- ~~`_enrich_row` reads `ai_tags` vs `ai_tags_json`~~ — Deserializes from DB column; write-back preserves existing data.
+- ~~`token_count` float from `//4.5`~~ — `_estimate_tokens()` always returns `int`.
+- ~~`build_vector_store()` fallback defaults diverge~~ — `_cfg()` resolver chains env → settings → default.
 
 ---
 
@@ -556,5 +589,5 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <strong>NEXUS AURORA v4.3.0</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
+  <strong>NEXUS AURORA v4.4.0</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
 </p>

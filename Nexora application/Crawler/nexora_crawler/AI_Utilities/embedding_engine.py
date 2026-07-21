@@ -58,6 +58,11 @@ class UnifiedEmbeddingEngine:
         api_key: str = "not-needed",
         timeout: int = 30,
         max_concurrent: int = 3,
+        failfast_threshold: int = 3,
+        fallback_provider: str = "",
+        fallback_model: str = "",
+        fallback_base_url: str = "",
+        fallback_api_key: str = "",
     ):
         self.provider = (provider or "ollama").lower()
         self.model = model
@@ -65,6 +70,16 @@ class UnifiedEmbeddingEngine:
         self.api_key = api_key
         self.timeout = timeout
         self.semaphore = asyncio.Semaphore(max_concurrent)  # caps concurrent embedding requests (rate-limit / overload guard)
+
+        # Circuit breaker: after `failfast_threshold` CONSECUTIVE failures the
+        # engine stops issuing provider calls for the rest of its lifetime and
+        # returns None immediately. Prevents a dead/quota-exhausted provider
+        # from stalling the pipeline on full read-timeouts per chunk
+        # (observed: 60s x hundreds of queued chunks = multi-hour drain).
+        # A threshold <= 0 disables the breaker.
+        self.failfast_threshold = failfast_threshold
+        self._consecutive_failures = 0
+        self._breaker_open = False
 
         # LiteLLM model string format: "provider/model" (used by non-HF paths)
         self.litellm_model = f"{provider}/{model}"
@@ -85,14 +100,61 @@ class UnifiedEmbeddingEngine:
             "embeddings_generated": 0,
             "batches_processed": 0,
             "errors": 0,
+            "fallback_used": 0,
         }
+
+        # Fallback provider: when the primary breaker opens, attempts are
+        # redirected here. The fallback has its own independent breaker so a
+        # second dead provider cannot hang the run.
+        self._fallback_engine = None
+        if fallback_provider:
+            self._fallback_engine = UnifiedEmbeddingEngine(
+                provider=fallback_provider,
+                model=fallback_model or model,
+                base_url=fallback_base_url or base_url,
+                api_key=fallback_api_key or api_key,
+                timeout=timeout,
+                max_concurrent=max_concurrent,
+                failfast_threshold=failfast_threshold,
+            )
+
+    def _record_failure(self):
+        self._consecutive_failures += 1
+        if (self.failfast_threshold > 0
+                and not self._breaker_open
+                and self._consecutive_failures >= self.failfast_threshold):
+            self._breaker_open = True
+            if self._fallback_engine:
+                logger.warning(
+                    "[EmbeddingEngine] Primary breaker OPEN after %d consecutive "
+                    "failures — falling back to %s/%s for subsequent calls.",
+                    self._consecutive_failures,
+                    self._fallback_engine.provider,
+                    self._fallback_engine.model,
+                )
+            else:
+                logger.warning(
+                    "[EmbeddingEngine] Circuit breaker OPEN after %d consecutive "
+                    "failures — skipping all further embedding calls for this run "
+                    "(provider=%s).", self._consecutive_failures, self.provider)
 
     async def embed(self, text: str) -> Optional[List[float]]:
         """Embed a single text string. Returns vector or None on failure."""
         if not text or len(text.strip()) < 10:
             return None
 
+        # Fallback path: primary breaker is open and a fallback engine is configured
+        if self._breaker_open and self._fallback_engine:
+            return await self._fallback_engine.embed(text)
+
+        if self._breaker_open:
+            return None
+
         async with self.semaphore:
+            if self._breaker_open:  # may have tripped while waiting for a slot
+                if self._fallback_engine:
+                    return await self._fallback_engine.embed(text)
+                return None
             try:
                 if self.provider == "huggingface":
                     embedding = await asyncio.to_thread(self._embed_hf_sync, text)
@@ -101,11 +163,13 @@ class UnifiedEmbeddingEngine:
 
                 if embedding:
                     self.stats["embeddings_generated"] += 1
+                    self._consecutive_failures = 0
                 return embedding
             except Exception as exc:
                 logger.warning("[EmbeddingEngine] Failed for text (%d chars): %s",
                               len(text), exc)
                 self.stats["errors"] += 1
+                self._record_failure()
                 return None
 
     async def _embed_litellm(self, text: str) -> Optional[List[float]]:
@@ -169,6 +233,11 @@ class UnifiedEmbeddingEngine:
                 self.stats["errors"] += 1
             else:
                 embeddings.append(result)
+                # Count fallback-generated embeddings so the run stats reflect
+                # where vectors actually came from.
+                if result and self._breaker_open and self._fallback_engine:
+                    self.stats["fallback_used"] += 1
+                    self._fallback_engine.stats["embeddings_generated"] += 1
 
         self.stats["batches_processed"] += 1
         return embeddings

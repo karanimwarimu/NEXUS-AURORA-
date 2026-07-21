@@ -22,6 +22,8 @@ import logging
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
+from scrapy.exceptions import DropItem
+
 
 log = logging.getLogger("nexora.pipeline")
 
@@ -102,10 +104,6 @@ class NexoraExtractionPipeline(_BasePipeline):
     async def process_item(self, item): # in simple words items and self here represent the data that is extracted from the web page, and it is stored in the item dictionary(defined in items.py) under the key "html". The process_item method is called for each item that is yielded by the spider, and it passes the item to the extractors and updates the item with the extracted data. It also performs content fingerprinting for deduplication, language detection, and structured data extraction.  
         # it passes the item to the extractors and updates the item with the extracted data. It also performs content fingerprinting for deduplication, language detection, and structured data extraction.
         """Scrapy 2.16+ async signature — no spider argument."""
-        # Skip items already marked for skipping (e.g. duplicates from earlier runs)
-        if item.get("__skip"):
-            return item
-
         html = item.get("html", "") # is the data that is extracted from the web page, and it is stored in the item dictionary(defined in items.py , is this true : ) under the key "html". If the key does not exist, it will return an empty string.
         url = item.get("url", "")
         if not html:
@@ -130,10 +128,12 @@ class NexoraExtractionPipeline(_BasePipeline):
         fingerprint = calculate_content_fingerprint(clean_text)
 
         if fingerprint and fingerprint != "0000000000000000":
-            if fingerprint in self._seen_fingerprints: 
-                log.info("Duplicate fingerprint %s — skipping.", fingerprint)
-                item["__skip"] = True
-                return item
+            if fingerprint in self._seen_fingerprints:
+                log.info("Duplicate fingerprint %s — dropping %s", fingerprint, url)
+                # Blank bulky fields so Scrapy's dropped-item log entry stays small
+                item["html"] = ""
+                item["clean_text"] = ""
+                raise DropItem(f"duplicate fingerprint {fingerprint}")
             self._seen_fingerprints.add(fingerprint)
             if len(self._seen_fingerprints) > self._max_fingerprints:
                 self._seen_fingerprints.clear()
@@ -173,10 +173,6 @@ class NexoraStylePipeline(_BasePipeline): # _BaselinePipeline here represents a 
 
     async def process_item(self, item):
         """Scrapy 2.16+ async signature — no spider argument."""
-        # Skip items already marked
-        if item.get("__skip"):
-            return item
-
         html = item.get("html", "")
         url = item.get("url", "")
         if not html:
@@ -208,9 +204,6 @@ class NexoraExportPipeline(_BasePipeline):
 
     async def process_item(self, item):
         """Scrapy 2.16+ async signature — no spider argument."""
-        if item.get("__skip"):
-            return item
-
         url = item.get("url", "unknown")
         if "screenshot_path" not in item:
             item["screenshot_path"] = ""
@@ -305,8 +298,6 @@ class NexoraDatasetPipeline(_BasePipeline):
 
     async def process_item(self, item):
         """Scrapy 2.16+ async signature — no spider argument."""
-        if item.get("__skip"):
-            return item
         if not getattr(self, "writer", None):
             return item
 

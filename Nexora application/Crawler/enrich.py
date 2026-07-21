@@ -21,6 +21,7 @@ Run from the Crawler/ directory:
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -64,6 +65,63 @@ class _Settings:
 
 def _load_settings() -> _Settings:
     return _Settings()
+
+
+def _build_crawler():
+    """Build a minimal crawler-compatible object for pipeline from_crawler()."""
+    settings = _load_settings()
+    return SimpleNamespace(
+        settings=settings,
+        stats=SimpleNamespace(inc_value=lambda k, v=1, spider=None: None),
+        workspace_id=settings.get("WORKSPACE_ID", ""),
+    )
+
+
+def _collect_targets(store: MetadataStore, args) -> list[dict]:
+    """Select target pages from MetadataStore based on CLI arguments."""
+    if args.url:
+        rows = store.query_by_url(args.url) or []
+        if not rows:
+            log.warning("[enrich] URL not found: %s", args.url)
+        return rows
+    if args.domain:
+        return store.query_by_domain(args.domain, limit=args.limit)
+    if args.crawl_id:
+        return store.query_by_crawl_id(args.crawl_id, limit=args.limit)
+    return store.get_unenriched_pages(limit=args.limit)
+
+
+async def _enrich_row(ai_pipe, chunk_pipe, vec_pipe, store, row: dict) -> bool:
+    """Run the full pipeline chain over one saved page and write results back."""
+    # DB rows store tags serialized in the `ai_tags_json` column (there is no
+    # `ai_tags` column) — deserialize so previously-stored tags survive a
+    # re-enrich pass where the LLM is skipped/unavailable.
+    try:
+        ai_tags = json.loads(row.get("ai_tags_json") or "[]")
+    except (TypeError, ValueError):
+        ai_tags = []
+    item = {
+        "url": row["url"],
+        "domain": row.get("domain", ""),
+        "title": row.get("title", ""),
+        "markdown": row.get("markdown", ""),
+        "ai_summary": row.get("ai_summary", ""),
+        "ai_tags": ai_tags,
+        # embeddings are not persisted in SQLite (they live in the vector
+        # store) — always regenerated per-chunk by the chunking pipeline
+        "ai_embedding": [],
+    }
+    item = await ai_pipe.process_item(item)
+    item = await chunk_pipe.process_item(item)
+    item = await vec_pipe.process_item(item)
+    # Don't clobber previously-stored values with empty results when the LLM
+    # failed or the circuit breaker skipped this page.
+    store.update_enrichment(
+        url=row["url"],
+        ai_summary=item.get("ai_summary") or row.get("ai_summary", ""),
+        ai_tags=item.get("ai_tags") or ai_tags,
+    )
+    return True
 
 
 log = logging.getLogger("nexora.enrich")
