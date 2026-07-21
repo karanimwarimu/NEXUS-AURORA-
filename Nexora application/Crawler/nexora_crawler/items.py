@@ -70,7 +70,11 @@ class NexoraPageItem(scrapy.Item):
 
     saved_json = scrapy.Field()   # absolute path to the saved JSON file
     saved_csv  = scrapy.Field()   # absolute path to the saved CSV file
-    __skip     = scrapy.Field()   # internal — mark item for skipping
+    ai_status  = scrapy.Field()   # e.g. "skipped_after_failures" (AI circuit breaker)
+    # NOTE: the former `__skip` marker field was removed — Python name-mangling
+    # registered it as `_NexoraPageItem__skip`, so `item["__skip"]` always
+    # raised KeyError. Duplicates are now dropped via scrapy.exceptions.DropItem
+    # in NexoraExtractionPipeline instead of a pass-through marker.
 
     # ── Phase 4A: Markdown & Content (populated at priority 110) ──────────
     markdown = scrapy.Field()             # str — clean Markdown content

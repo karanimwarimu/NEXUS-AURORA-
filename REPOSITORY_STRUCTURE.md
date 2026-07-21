@@ -1,6 +1,6 @@
 # Repository Structure
 
-> NEXUS AURORA v4.3.0 — reflects the current state including on-demand enrichment rework, Phase 4B test verification, and multi-entrypoint wiring.
+> NEXUS AURORA v4.4.0 — reflects the current state including debug campaign fixes (Steps 1–14), provider fallback architecture, and action-link crawl hygiene.
 
 ```text
 .
@@ -8,7 +8,7 @@
 ├── LICENSE
 ├── README.md
 ├── REPOSITORY_STRUCTURE.md
-├── release_notes_v4.3.0.md                              ★ new: v4.3.0 release notes
+├── release_notes_v4.4.0.md                              ★ new: v4.4.0 release notes
 ├── Nexora application/
 │   ├── application documents/
 │   │   └── requirements.txt
@@ -79,7 +79,7 @@
 │   │   ├── test_phase4a.py                              ← Phase 4A: 18-test suite
 │   │   └── ... (Phase 3 live-site / benchmark scripts)
 │   ├── release_notes_v4.1.0.md
-│   └── release_notes_v4.3.0.md                          ★ v4.3.0 release notes
+│   └── release_notes_v4.4.0.md                          ★ v4.4.0 release notes
 ├── data/
 │   ├── test_profiles.db                                 ← SQLite site profile cache
 │   ├── nexora_metadata.db                               ← Phase 4A: SQLite metadata store (auto-created)
@@ -116,24 +116,29 @@
 - **`data/nexora_metadata.db`** — Auto-created SQLite metadata store.
 - **`tests/test_phase4a.py`** — 18-test suite.
 
-### Phase 4B — AI Enrichment & Vector Indexing ✅ (v4.3.0)
-- **`Crawler/nexora_crawler/AI_Utilities/embedding_engine.py`** — `UnifiedEmbeddingEngine`. Provider-aware: `huggingface` → HF router legacy `feature-extraction` endpoint; others → LiteLLM `aembedding`.
-- **`Crawler/nexora_crawler/pipelines/ai_enrichment.py`** — `AIEnrichmentPipeline` (250): LLM summary + tags + page-level embedding. Includes `_truncate_text()` for clean prompt boundaries.
-- **`Crawler/nexora_crawler/pipelines/chunking_pipeline.py`** — `StructuralChunkingPipeline` (260): Markdown → `NexoraChunk` (~512 tokens), inherits `ai_summary`/`ai_tags`/`ai_embedding`.
+### Phase 4B — AI Enrichment & Vector Indexing ✅ (v4.4.0)
+- **`Crawler/nexora_crawler/AI_Utilities/embedding_engine.py`** — `UnifiedEmbeddingEngine`. Provider-aware: `huggingface` → HF router legacy `feature-extraction` endpoint; others → LiteLLM `aembedding`. Circuit breaker prevents timeout drains; fallback engine routes to secondary provider when primary is quota-exhausted.
+- **`Crawler/nexora_crawler/pipelines/ai_enrichment.py`** — `AIEnrichmentPipeline` (250): LLM summary + tags. Circuit breaker skips remaining pages after N consecutive failures; fallback provider retries LLM calls when breaker opens. Includes `_truncate_text()` for clean prompt boundaries.
+- **`Crawler/nexora_crawler/pipelines/chunking_pipeline.py`** — `StructuralChunkingPipeline` (260): Markdown → `NexoraChunk` (~512 tokens), per-chunk `embed_batch()` embeddings (replaces inherited page-level embedding). `_estimate_tokens()` single source of truth, always `int`.
 - **`Crawler/nexora_crawler/pipelines/vector_index_pipeline.py`** — `VectorIndexPipeline` (270): `NexoraChunk` → `VectorRecord` → `BaseVectorStore`.
-- **`Crawler/nexora_crawler/vector_store/`** — `base.py` (`BaseVectorStore` contract), `chroma_store.py` (local), `pgvector_store.py` (Supabase/Postgres), `factory.py` (`build_vector_store`).
+- **`Crawler/nexora_crawler/vector_store/`** — `base.py` (`BaseVectorStore` contract), `chroma_store.py` (local), `pgvector_store.py` (Supabase/Postgres), `factory.py` (`build_vector_store` with settings-aware `_cfg()` resolver).
 - **`data/chroma/`** — Auto-created Chroma persistence (verified: 124 records indexed in a live run).
 - **`Crawler/nexora_crawler/pipelines/test_ai.py`** / **`test_ai_direct_hf.py`** — connectivity probes.
 - **`Crawler/nexora_crawler/pipelines/test_vector_store.py`** — proves embeddings are stored in and retrieveable from Chroma (health, count, sample records, round-trip search).
 - **`Project Tools/switch_model_guide.md`** — change model/provider/backend via settings only.
 
-### On-Demand Enrichment Rework (v4.3.0)
-- **`Crawler/nexora_crawler/settings.py`** — `NEXORA_ENRICH_MODE` flag (`"eager"` | `"on_demand"`). Conditional `ITEM_PIPELINES` (8 pipelines in on_demand, 11 in eager).
-- **`Crawler/nexora_crawler/storage/local_sqlite.py`** — `_migrate_schema()` (markdown_preview→markdown), `get_unenriched_pages()`, `update_enrichment()`.
-- **`Crawler/nexora_crawler/items.py`** — `vector_backend` field added.
+### On-Demand Enrichment Rework + Debug Campaign (v4.4.0)
+- **`Crawler/nexora_crawler/settings.py`** — `NEXORA_ENRICH_MODE` flag (`"eager"` | `"on_demand"`). Conditional `ITEM_PIPELINES` (8 pipelines in on_demand, 11 in eager). `_anchored_path()` resolves relative DB/chroma paths against settings file directory. `NEXORA_AI_FAILFAST_THRESHOLD` and `NEXORA_AI_FALLBACK_*` settings for circuit breaker + provider fallback.
+- **`Crawler/nexora_crawler/storage/local_sqlite.py`** — `_migrate_schema()` (markdown_preview→markdown), `_limit_clause()` (None-safe LIMIT), `get_unenriched_pages()`, `update_enrichment()`.
+- **`Crawler/nexora_crawler/items.py`** — `vector_backend`, `ai_status` fields. Removed non-functional mangled `__skip` field.
 - **`Crawler/nexora_crawler/api.py`** — `enrich_mode` in `CrawlRequest`/`CrawlResponse`, `_normalize_enrich_mode()`, subprocess env forwarding, settings reload in `run_cli_direct()`.
-- **`Crawler/enrich.py`** — New offline enrichment CLI. Reuses Phase 4B pipelines over saved pages. Supports `--url`, `--domain`, `--crawl-id`, `--limit`. **Note:** has a known bug (missing 3 helper functions — see `outputs/audit/BUG_enrich_py_missing_helpers.md`).
+- **`Crawler/enrich.py`** — Offline enrichment CLI with `_build_crawler()`, `_collect_targets()`, `_enrich_row()`. Deserializes `ai_tags_json`; write-back preserves existing summary/tags when new values are empty.
+- **`Crawler/nexora_crawler/pipelines/__init__.py`** — `NexoraExtractionPipeline` uses `scrapy.exceptions.DropItem` for duplicates (was `__skip` KeyError). Dead `__skip` guards removed.
+- **`Crawler/nexora_crawler/pipelines/parquet_export.py`** — Catch-all JSON-stringify for nested fields prevents PyArrow `struct<>` inference from unwritable empty dicts.
+- **`Crawler/nexora_crawler/middlewares/__init__.py`** — `_INFRA_PATH_RE` pass-through for `/robots.txt` and `sitemap*.xml`. `_BLOCKED_QUERY_RE` blocks action query params (`vote`, `hide`, `submit`, `action=history`, etc.).
+- **`Extractor/multimodal_extractor.py`** — `_descriptor_weight()` and `_safe_dimension()` handle `2x`/`100%`/`auto`/trailing-comma srcsets.
 - **`outputs/audit/`** — 45-test verification suite (39 PASS, 5 FAIL, 1 SKIP). See `NEXORA_PHASE4B_TEST_SUMMARY.md` for details.
+- **`outputs/qa_run_20260720/`** — Live 10-test QA scorecard + 14-step debug campaign log.
 
 ### Phase 4+ — Future
 - **`PHASE_4_AI_ANALYTICS.md`** — ML-based site classification, smart routing

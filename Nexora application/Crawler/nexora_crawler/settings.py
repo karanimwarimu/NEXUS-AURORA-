@@ -96,12 +96,6 @@ DOWNLOADER_MIDDLEWARES = {
     "nexora_crawler.middlewares.NexoraUserAgentMiddleware": 50,
     # Content-type guard — rejects non-HTML responses, blocks URL patterns
     "nexora_crawler.middlewares.ContentTypeFilterMiddleware": 510,
-    # Resource blocking — blocks images/fonts/analytics in Playwright pages (before PW handler)
-    "nexora_crawler.middlewares.playwright_resource_blocker.PlaywrightResourceBlocker": 541,
-    # Dynamic detection — identifies JS-heavy pages BEFORE Playwright handler (priority < 543)
-    "nexora_crawler.middlewares.dynamic_detection.DynamicDetectionMiddleware": 542,
-    # Playwright cleanup — closes pages to prevent memory leaks
-    "nexora_crawler.middlewares.playwright_cleanup.PlaywrightCleanupMiddleware": 550,
     # Exponential backoff — retries with 1s → 2s → 4s → 8s delay for 429/503/408
     # (Import is from the middleware module file, not middlewares/__init__.py)
     "nexora_crawler.middlewares.exponential_backoff.ExponentialBackoffMiddleware": 700,
@@ -220,9 +214,14 @@ if NEXORA_PLAYWRIGHT_ENABLED:
     PLAYWRIGHT_MAX_PAGES_PER_CONTEXT = 5
     PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 30000
 
-    # Add Playwright handler middleware to the chain
+    # Playwright-support middlewares. NOTE: ScrapyPlaywrightDownloadHandler is
+    # a DOWNLOAD HANDLER (registered in DOWNLOAD_HANDLERS above) — it must NOT
+    # also be listed here as a middleware, or a second handler instance (and
+    # browser) gets created.
     DOWNLOADER_MIDDLEWARES.update({
-        "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler": 543,
+        "nexora_crawler.middlewares.playwright_resource_blocker.PlaywrightResourceBlocker": 541,
+        "nexora_crawler.middlewares.dynamic_detection.DynamicDetectionMiddleware": 542,
+        "nexora_crawler.middlewares.playwright_cleanup.PlaywrightCleanupMiddleware": 550,
     })
 
 
@@ -244,11 +243,27 @@ NEXORA_PARQUET_OUTPUT = './output/parquet'
 # Postgres+pgvector database is available (see NEXORA_DATABASE_URL below).
 NEXORA_VECTOR_BACKEND = "chroma"   # chroma | pgvector | qdrant | cloudflare_vectorize
 NEXORA_VECTOR_INDEX_ENABLED = True
-NEXORA_CHROMA_PATH = "./data/chroma"
+
+# Data-store paths are anchored to THIS file's directory, not the process CWD.
+# Entrypoints run from different directories (scrapy/api.py from
+# nexora_crawler/, enrich.py from Crawler/), and CWD-relative paths made them
+# silently operate on DIFFERENT databases (bug #15: enrich.py never saw crawl
+# data). Relative values (defaults or from env/.env) are resolved against the
+# package dir; absolute values pass through unchanged.
+_NEXORA_PKG_DIR = Path(__file__).resolve().parent
+
+def _anchored_path(value: str) -> str:
+    p = Path(value)
+    return str(p if p.is_absolute() else (_NEXORA_PKG_DIR / p).resolve())
+
+NEXORA_CHROMA_PATH = _anchored_path(os.getenv("NEXORA_CHROMA_PATH", "data/chroma"))
 # pgvector (production) — only used when NEXORA_VECTOR_BACKEND="pgvector"
 NEXORA_DATABASE_URL = "postgresql://postgres:password@localhost:5432/nexora"
-NEXORA_EMBEDDING_DIM = 384  # all-MiniLM-L6-v2: 384; all-mpnet-base-v2: 768; OpenAI 3-small: 1536
-NEXORA_METADATA_DB = './data/nexora_metadata.db'
+NEXORA_METADATA_DB = _anchored_path(os.getenv("NEXORA_METADATA_DB", "data/nexora_metadata.db"))
+# vector_store/factory.py reads these via os.getenv (not this module) — export
+# the resolved absolute paths so every consumer lands on the same files.
+os.environ["NEXORA_CHROMA_PATH"] = NEXORA_CHROMA_PATH
+os.environ["NEXORA_METADATA_DB"] = NEXORA_METADATA_DB
 
 
 # ── Phase 4B: AI Enrichment Settings (Hugging Face via LiteLLM) ───────────────
@@ -278,6 +293,23 @@ NEXORA_AI_API_KEY = os.getenv("NEXORA_AI_API_KEY", "") or os.getenv("HF_TOKEN", 
 NEXORA_AI_TIMEOUT = 60
 NEXORA_AI_MAX_CONCURRENT = 2
 NEXORA_EMBEDDINGS_ENABLED = True
+
+# Circuit breaker: after this many CONSECUTIVE failed AI calls (LLM or
+# embedding, tracked per subsystem) all further AI calls are skipped for the
+# remainder of the run. Prevents a dead/quota-exhausted provider from turning
+# an eager crawl into an hours-long timeout drain (observed 2026-07-20).
+# Set to 0 to disable the breaker.
+NEXORA_AI_FAILFAST_THRESHOLD = int(os.getenv("NEXORA_AI_FAILFAST_THRESHOLD", "3"))
+
+# Fallback provider for embeddings when the primary hits the circuit breaker.
+# Empty values mean "no fallback" — the engine returns None once the primary
+# breaker opens. Set both provider and model (and base_url/api_key if needed)
+# to restore AI functionality when the primary quota is exhausted.
+# Example: NEXORA_AI_FALLBACK_PROVIDER=ollama  NEXORA_AI_FALLBACK_MODEL=nomic-embed-text
+NEXORA_AI_FALLBACK_PROVIDER = os.getenv("NEXORA_AI_FALLBACK_PROVIDER", "")
+NEXORA_AI_FALLBACK_MODEL = os.getenv("NEXORA_AI_FALLBACK_MODEL", "")
+NEXORA_AI_FALLBACK_BASE_URL = os.getenv("NEXORA_AI_FALLBACK_BASE_URL", "")
+NEXORA_AI_FALLBACK_API_KEY = os.getenv("NEXORA_AI_FALLBACK_API_KEY", "")
 
 # -- Phase 4B: Chunking Settings ─────────────────────────────────────────────
 NEXORA_CHUNK_SIZE = 512 # Target tokens per chunk 

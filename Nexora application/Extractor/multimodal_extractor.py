@@ -58,8 +58,9 @@ class MultimodalAssetExtractor:
         has_hero = False
         if images:
             first_img = images[0]
-            width = int(first_img.get("width") or 0)
-            height = int(first_img.get("height") or 0)
+            # width/height attrs may be non-numeric ("100%", "auto", "600px")
+            width = self._safe_dimension(first_img.get("width"))
+            height = self._safe_dimension(first_img.get("height"))
             if width >= 600 or height >= 400:
                 first_img["is_hero"] = True
                 has_hero = True
@@ -72,6 +73,27 @@ class MultimodalAssetExtractor:
             "has_hero_image": has_hero,
         }
 
+    @staticmethod
+    def _safe_dimension(value) -> int:
+        """Parse an HTML width/height attribute, returning 0 for non-numeric
+        values like "100%", "auto", or "600px"."""
+        try:
+            return int(str(value or 0).strip().rstrip("px").rstrip("%") or 0)
+        except (ValueError, TypeError):
+            return 0
+
+    @staticmethod
+    def _descriptor_weight(descriptor: str) -> float:
+        """Rank a srcset descriptor: width ("800w") or pixel density ("2x").
+
+        A malformed descriptor ranks 0 instead of raising, so one bad
+        candidate can't abort extraction for the whole page.
+        """
+        try:
+            return float(descriptor.strip().rstrip("wx"))
+        except (ValueError, TypeError):
+            return 0.0
+
     def _extract_images(self, soup: BeautifulSoup, base_url: str) -> List[Dict]:
         images = []
         for img in soup.find_all("img"):
@@ -83,12 +105,13 @@ class MultimodalAssetExtractor:
             srcset = img.get("srcset", "")
             best_src = src
             if srcset:
-                candidates = [
-                    (urljoin(base_url, part.strip().split()[0]),
-                     int(part.strip().split()[1].replace("w", "")) 
-                     if len(part.strip().split()) > 1 else 0)
-                    for part in srcset.split(",")
-                ]
+                candidates = []
+                for part in srcset.split(","):
+                    tokens = part.strip().split()
+                    if not tokens:
+                        continue  # trailing comma / empty entry
+                    weight = self._descriptor_weight(tokens[1]) if len(tokens) > 1 else 0.0
+                    candidates.append((urljoin(base_url, tokens[0]), weight))
                 if candidates:
                     best_src = max(candidates, key=lambda x: x[1])[0]
 

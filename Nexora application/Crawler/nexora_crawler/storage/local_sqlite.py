@@ -9,7 +9,7 @@ import os
 import json
 import logging
 import sqlite3
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -173,39 +173,62 @@ class MetadataStore:
                          url, exc)
             return False
 
-    def get_unenriched_pages(self, limit: int = 100) -> List[Dict]:
+    @staticmethod
+    def _limit_clause(limit: Optional[int]):
+        """Return (sql_suffix, params) for an optional LIMIT.
+
+        limit=None means "no limit" — the clause is omitted entirely.
+        (Binding None into `LIMIT ?` raises sqlite3.IntegrityError.)
+        """
+        if limit is None:
+            return "", ()
+        return " LIMIT ?", (int(limit),)
+
+    def get_unenriched_pages(self, limit: Optional[int] = None) -> List[Dict]:
         """Return saved pages that have not been enriched yet.
 
         A page counts as unenriched when its `ai_summary` is still empty
         (the crawler never sets it inline in on_demand mode, and the offline
         `enrich` command fills it in once vectors/summary are produced).
+        limit=None returns all unenriched pages.
         """
+        suffix, extra = self._limit_clause(limit)
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM pages "
                 "WHERE ai_summary IS NULL OR ai_summary = '' "
-                "ORDER BY timestamp DESC LIMIT ?",
-                (limit,)
+                "ORDER BY timestamp DESC" + suffix,
+                extra
             )
             return [dict(row) for row in cursor.fetchall()]
 
-    def query_by_domain(self, domain: str, limit: int = 100) -> List[Dict]:
-
+    def query_by_domain(self, domain: str, limit: Optional[int] = None) -> List[Dict]:
+        suffix, extra = self._limit_clause(limit)
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
-                "SELECT * FROM pages WHERE domain = ? ORDER BY timestamp DESC LIMIT ?",
-                (domain, limit)
+                "SELECT * FROM pages WHERE domain = ? ORDER BY timestamp DESC" + suffix,
+                (domain,) + extra
             )
             return [dict(row) for row in cursor.fetchall()]
 
-    def query_by_crawl_id(self, crawl_id: str) -> List[Dict]:
+    def query_by_crawl_id(self, crawl_id: str, limit: Optional[int] = None) -> List[Dict]:
+        suffix, extra = self._limit_clause(limit)
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
-                "SELECT * FROM pages WHERE crawl_id = ? ORDER BY timestamp DESC",
-                (crawl_id,)
+                "SELECT * FROM pages WHERE crawl_id = ? ORDER BY timestamp DESC" + suffix,
+                (crawl_id,) + extra
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def query_by_url(self, url: str) -> List[Dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM pages WHERE url = ? ORDER BY timestamp DESC",
+                (url,)
             )
             return [dict(row) for row in cursor.fetchall()]
 

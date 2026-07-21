@@ -51,6 +51,9 @@ BLOCKED_PATH_PATTERNS = [
     r"/feedback",
     r"/cart",
     r"/checkout",
+    r"/vote",
+    r"/hide",
+    r"/submit",
     r"\.pdf$",
     r"\.zip$",
     r"\.exe$",
@@ -59,7 +62,22 @@ BLOCKED_PATH_PATTERNS = [
     r"\.(mp4|mp3|avi|mov|wmv)$",
     r"\.(css|js|woff|woff2|ttf)$",
 ]
-_BLOCKED_RE = re.compile("|".join(BLOCKED_PATH_PATTERNS), re.IGNORECASE) # what regex does is : it compiles the regex patterns into a single regex object that can be used to match against URLs. The re.IGNORECASE flag makes the matching case-insensitive, so it will match patterns regardless of whether they are in uppercase or lowercase. This is useful for filtering out unwanted paths in web crawling, such as login pages, admin pages, and certain file types like images and videos.
+_BLOCKED_RE = re.compile("|".join(BLOCKED_PATH_PATTERNS), re.IGNORECASE)
+
+# Query-string action parameters that produce non-content pages (history,
+# edit, mobile variants, etc.). Checked alongside path patterns so action
+# links like /vote?ID=... or ?action=history are blocked at request time.
+_BLOCKED_QUERY_RE = re.compile(
+    r"(?:^|&)(?:action|mobileaction)=(?:history|edit|raw|diff|undelete|protect|move|delete|purge|watch|unwatch|rollback|mark|semiprotect)(?:&|$)",
+    re.IGNORECASE,
+)
+
+# Crawl-infrastructure files that are intentionally non-HTML: robots.txt
+# (text/plain, consumed by RobotsTxtMiddleware) and sitemap XML variants
+# (sitemap.xml / sitemap_index.xml / sitemap-1.xml[.gz], consumed by the
+# sitemap detector/parser). These must bypass the content-type block or
+# robots rules are silently never applied.
+_INFRA_PATH_RE = re.compile(r"/(robots\.txt|sitemap[^/]*\.xml(\.gz)?)$", re.IGNORECASE)
 
 
 class NexoraUserAgentMiddleware:
@@ -107,10 +125,18 @@ class ContentTypeFilterMiddleware:
             log.debug("[ALLOW-PW] %s", _short(request.url))
             return None
 
-        path = urlparse(request.url).path # urlparse here is used to extract the path component of the URL from the request. The path is the part of the URL that comes after the domain name and before any query parameters or fragments. For example, in the URL "https://example.com/account/login?next=/dashboard", the path would be "/account/login". This path is then checked against a list of blocked patterns to determine if the request should be allowed or blocked.
+        parsed = urlparse(request.url)
+        path = parsed.path
+        query = parsed.query
+
         if _BLOCKED_RE.search(path):
-            log.debug("[BLOCK-req] pattern match -> %s", request.url)
+            log.debug("[BLOCK-req] path pattern match -> %s", _short(request.url))
             raise IgnoreRequest(f"Blocked URL pattern: {request.url}")
+
+        if query and _BLOCKED_QUERY_RE.search(query):
+            log.debug("[BLOCK-req] query pattern match -> %s", _short(request.url))
+            raise IgnoreRequest(f"Blocked URL query: {request.url}")
+
         log.debug("[ALLOW-req] %s", _short(request.url))
         return None
 
@@ -121,6 +147,12 @@ class ContentTypeFilterMiddleware:
         # sitemap XML must reach parse_sitemap_index (text/xml / application/xml)
         if request.meta.get("from_sitemap"):
             log.debug("[ALLOW-resp] sitemap pass-through -> %s", _short(url))
+            return response
+
+        # robots.txt / sitemap XML are crawl infrastructure — let them through
+        # regardless of content-type (RobotsTxtMiddleware needs the body).
+        if _INFRA_PATH_RE.search(urlparse(url).path):
+            log.debug("[ALLOW-resp] infra file -> %s", _short(url))
             return response
 
         ct = response.headers.get(b"Content-Type", b"").decode("utf-8", "ignore").lower()

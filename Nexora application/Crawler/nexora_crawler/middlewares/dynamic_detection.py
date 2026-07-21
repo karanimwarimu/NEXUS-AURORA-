@@ -23,7 +23,6 @@ from urllib.parse import urlparse
 import httpx
 from scrapy import signals
 from scrapy.http import Request
-from scrapy_playwright.page import PageMethod
 
 logger = logging.getLogger(__name__)
 
@@ -433,11 +432,20 @@ class DynamicDetectionMiddleware:
         return False
 
     def _calculate_text_density(self, html):
-        """Calculate ratio of visible text to markup."""
-        text = re.sub(r'<[^>]+>', ' ', html)
-        text = re.sub(r'\s+', ' ', text).strip()
+        """Calculate ratio of VISIBLE text to markup.
+
+        Script/style bodies are removed BEFORE stripping tags — a browser
+        renders none of that content. Counting it as "text" (the old
+        behavior) made inline-JS pages (e.g. quotes.toscrape.com/js, which
+        carries its data payload in a <script>) score as text-rich static
+        pages: density 0.54 counted vs 0.017 visible.
+        """
         if not html:
             return 0.0
+        visible = re.sub(r'<(script|style)\b[^>]*>.*?</\1>', ' ', html,
+                         flags=re.DOTALL | re.I)
+        text = re.sub(r'<[^>]+>', ' ', visible)
+        text = re.sub(r'\s+', ' ', text).strip()
         return len(text) / len(html)
 
     def _detect_framework(self, html):
@@ -456,6 +464,8 @@ class DynamicDetectionMiddleware:
 
     # PLAYWRIGHT META APPLICATION
     def _apply_playwright_meta(self, request):
+        from scrapy_playwright.page import PageMethod
+
         page_methods = [
             PageMethod("wait_for_load_state", "networkidle"),
         ]
@@ -470,7 +480,11 @@ class DynamicDetectionMiddleware:
             "playwright_page_methods": page_methods,
             "playwright_context": "default",
         })
-        return request
+        # A Request returned from process_request is re-scheduled through the
+        # engine — same fingerprint, so the dupefilter would silently drop it
+        # (the original static attempt already registered it). dont_filter lets
+        # the Playwright retry through.
+        return request.replace(dont_filter=True)
 
     def _build_stealth_script(self):
         """Build JavaScript that patches common bot detection properties.
@@ -593,6 +607,10 @@ class DynamicDetectionMiddleware:
         and fragments that would break simple .endswith() checks.
         """
         path = urlparse(request.url).path.lower()
+        # .txt/.xml: robots.txt and sitemap files are crawl infrastructure —
+        # probing them poisons the DOMAIN-wide profile cache (a robots.txt 404
+        # scored "static" and pinned the whole site to static fetching).
         non_html_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.css', '.js',
-                               '.pdf', '.zip', '.mp4', '.svg', '.ico', '.woff2')
+                               '.pdf', '.zip', '.mp4', '.svg', '.ico', '.woff2',
+                               '.txt', '.xml')
         return not path.endswith(non_html_extensions)

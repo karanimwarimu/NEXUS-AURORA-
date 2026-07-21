@@ -14,12 +14,31 @@ from .base import BaseVectorStore, BackendNotFoundError
 logger = logging.getLogger(__name__)
 
 
+def _cfg(name: str, default=None):
+    """Resolve config with one precedence everywhere: env var, then the
+    nexora_crawler.settings module, then `default`.
+
+    The old getenv-only reads carried hardcoded fallbacks (pgvector / 768 /
+    CWD-relative chroma path) that silently diverged from settings.py
+    (chroma / 384 / anchored path) whenever the env var was absent.
+    """
+    val = os.getenv(name)
+    if val is not None:
+        return val
+    try:
+        from nexora_crawler import settings as _settings
+        return getattr(_settings, name, default)
+    except ImportError:
+        return default
+
+
 def build_vector_store(backend_name: str = None) -> BaseVectorStore:
     """
     Build the configured vector store backend.
 
     Args:
-        backend_name: Override env var. If None, reads NEXORA_VECTOR_BACKEND.
+        backend_name: Override. If None, resolves NEXORA_VECTOR_BACKEND via
+            env var -> settings.py -> "chroma".
 
     Returns:
         Configured BaseVectorStore instance.
@@ -27,7 +46,7 @@ def build_vector_store(backend_name: str = None) -> BaseVectorStore:
     Raises:
         BackendNotFoundError: If backend is unknown or dependencies missing.
     """
-    backend = (backend_name or os.getenv("NEXORA_VECTOR_BACKEND", "pgvector")).lower()
+    backend = (backend_name or _cfg("NEXORA_VECTOR_BACKEND", "chroma")).lower()
 
     if backend == "pgvector":
         try:
@@ -37,8 +56,8 @@ def build_vector_store(backend_name: str = None) -> BaseVectorStore:
                 "PgVector backend not available. Install with: pip install psycopg2-binary pgvector"
             )
         return PgVectorStore(
-            database_url=os.getenv("NEXORA_DATABASE_URL"),
-            embedding_dim=int(os.getenv("NEXORA_EMBEDDING_DIM", "768")),
+            database_url=_cfg("NEXORA_DATABASE_URL"),
+            embedding_dim=int(_cfg("NEXORA_EMBEDDING_DIM", 384)),
         )
 
     elif backend == "chroma":
@@ -49,7 +68,7 @@ def build_vector_store(backend_name: str = None) -> BaseVectorStore:
                 "Chroma backend not available. Install with: pip install chromadb"
             )
         return ChromaVectorStore(
-            path=os.getenv("NEXORA_CHROMA_PATH", "./data/chroma"),
+            path=_cfg("NEXORA_CHROMA_PATH", "./data/chroma"),
         )
 
     elif backend == "qdrant":

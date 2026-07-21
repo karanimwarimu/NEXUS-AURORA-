@@ -86,6 +86,19 @@ class ParquetExportPipeline:
         for key in ['html', 'markdown', 'clean_text', 'chunks']:
             row.pop(key, None)
 
+        # Catch-all: JSON-stringify any remaining dict/list field (meta_tags,
+        # headings, links, structured_schema, ...). An all-empty dict column
+        # would otherwise make PyArrow infer a struct with no child fields,
+        # which Parquet cannot write ("Cannot write struct type ... no child
+        # field") and the whole flush is lost.
+        for key in list(row.keys()):
+            if isinstance(row[key], (dict, list, tuple, set)):
+                try:
+                    row[f"{key}_json"] = json.dumps(row[key], default=str)
+                except (TypeError, ValueError):
+                    row[f"{key}_json"] = json.dumps(str(row[key]))
+                del row[key]
+
         return row
 
     def _flush_buffer(self):

@@ -11,7 +11,18 @@ from typing import List, Dict
 from dataclasses import dataclass, field
 import uuid
 
+from nexora_crawler.AI_Utilities.embedding_engine import UnifiedEmbeddingEngine
+
 logger = logging.getLogger(__name__)
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimate token count from characters (4.5 chars ≈ 1 English token).
+
+    Single source of truth for the heuristic — always returns an int
+    (floor-dividing by the float 4.5 used to leak floats into token_count).
+    """
+    return int(len(text) / 4.5)
 
 
 @dataclass
@@ -47,9 +58,28 @@ class StructuralChunkingPipeline:
         self.chunk_size = self.settings.getint('NEXORA_CHUNK_SIZE', 512)
         self.chunk_overlap = self.settings.getint('NEXORA_CHUNK_OVERLAP', 128)
 
+        self.embeddings_enabled = self.settings.getbool('NEXORA_EMBEDDINGS_ENABLED', False)
+        if self.embeddings_enabled:
+            self.embedding_engine = UnifiedEmbeddingEngine(
+                provider=self.settings.get('NEXORA_AI_PROVIDER', 'ollama'),
+                model=self.settings.get('NEXORA_AI_EMBEDDING_MODEL', 'nomic-embed-text'),
+                base_url=self.settings.get('NEXORA_AI_BASE_URL', 'http://localhost:11434'),
+                api_key=self.settings.get('NEXORA_AI_API_KEY', 'not-needed'),
+                timeout=self.settings.getint('NEXORA_AI_TIMEOUT', 30),
+                max_concurrent=self.settings.getint('NEXORA_AI_MAX_CONCURRENT', 3),
+                failfast_threshold=self.settings.getint('NEXORA_AI_FAILFAST_THRESHOLD', 3),
+                fallback_provider=self.settings.get('NEXORA_AI_FALLBACK_PROVIDER', ''),
+                fallback_model=self.settings.get('NEXORA_AI_FALLBACK_MODEL', ''),
+                fallback_base_url=self.settings.get('NEXORA_AI_FALLBACK_BASE_URL', ''),
+                fallback_api_key=self.settings.get('NEXORA_AI_FALLBACK_API_KEY', ''),
+            )
+        else:
+            self.embedding_engine = None
+
         self.stats = {
             "pages_chunked": 0,
             "chunks_generated": 0,
+            "embeddings_generated": 0,
             "avg_chunk_tokens": 0,
         }
 
@@ -71,8 +101,23 @@ class StructuralChunkingPipeline:
                 title=item.get("title", ""),
                 ai_summary=item.get("ai_summary", ""),
                 ai_tags=item.get("ai_tags", []),
-                ai_embedding=item.get("ai_embedding", []),
             )
+
+            # Generate per-chunk embeddings (replaces inherited page-level embedding)
+            if self.embeddings_enabled and self.embedding_engine and chunks:
+                if getattr(self.embedding_engine, "_breaker_open", False):
+                    logger.info(
+                        "[Chunking] Embedding breaker open — skipping embeddings for %s",
+                        item.get("url", ""),
+                    )
+                else:
+                    contents = [c.content[:4000] for c in chunks if c.content]
+                    if contents:
+                        embeddings = await self.embedding_engine.embed_batch(contents)
+                        for chunk, emb in zip(chunks, embeddings):
+                            if emb:
+                                chunk.embedding = emb
+                                self.stats["embeddings_generated"] += 1
 
             item["chunk_count"] = len(chunks)
             item["chunk_ids"] = [c.chunk_id for c in chunks]
@@ -93,8 +138,7 @@ class StructuralChunkingPipeline:
         return item
 
     def _chunk_markdown(self, markdown: str, url: str, title: str,
-                        ai_summary: str, ai_tags: List[str],
-                        ai_embedding: List[float]) -> List[NexoraChunk]:
+                        ai_summary: str, ai_tags: List[str]) -> List[NexoraChunk]:
         """
         Split markdown into semantic chunks.
 
@@ -104,8 +148,8 @@ class StructuralChunkingPipeline:
         3. If paragraph > chunk_size, split by sentences
         4. Add overlap between chunks
         """
-        # Estimate tokens (4 chars ≈ 1 token)
-        estimated_tokens = len(markdown) // 4
+        # Estimate tokens (4.5 chars ≈ 1 token for English; avoids under-splitting)
+        estimated_tokens = _estimate_tokens(markdown)
 
         if estimated_tokens <= self.chunk_size:
             # Single chunk — no splitting needed
@@ -119,7 +163,6 @@ class StructuralChunkingPipeline:
                 word_count=len(markdown.split()),
                 ai_summary=ai_summary,
                 ai_tags=ai_tags,
-                embedding=ai_embedding,  # Inherit parent embedding
             )]
 
         # Split by headings first
@@ -149,7 +192,7 @@ class StructuralChunkingPipeline:
                 if not para:
                     continue
 
-                para_tokens = len(para) // 4
+                para_tokens = _estimate_tokens(para)
 
                 if current_tokens + para_tokens > self.chunk_size and current_chunk:
                     # Save current chunk
@@ -160,23 +203,22 @@ class StructuralChunkingPipeline:
                         content=chunk_text,
                         chunk_index=chunk_index,
                         heading_chain=list(current_headings),
-                        token_count=len(chunk_text) // 4,
+                        token_count=_estimate_tokens(chunk_text),
                         word_count=len(chunk_text.split()),
                         ai_summary=ai_summary,
                         ai_tags=ai_tags,
-                        embedding=ai_embedding,
                     ))
                     chunk_index += 1
 
                     # Start new chunk with overlap
                     overlap_text = self._get_overlap_text(current_chunk, self.chunk_overlap)
                     current_chunk = [overlap_text] if overlap_text else []
-                    current_tokens = len(overlap_text) // 4 if overlap_text else 0
+                    current_tokens = _estimate_tokens(overlap_text) if overlap_text else 0
 
                 current_chunk.append(para)
                 current_tokens += para_tokens
 
-        # Last chunk
+        # Last chunk — chunk_count set in fix-up loop below
         if current_chunk:
             chunk_text = '\n\n'.join(current_chunk)
             chunks.append(NexoraChunk(
@@ -184,13 +226,11 @@ class StructuralChunkingPipeline:
                 parent_title=title,
                 content=chunk_text,
                 chunk_index=chunk_index,
-                chunk_count=len(chunks) + 1,
                 heading_chain=list(current_headings),
-                token_count=len(chunk_text) // 4,
+                token_count=_estimate_tokens(chunk_text),
                 word_count=len(chunk_text.split()),
                 ai_summary=ai_summary,
                 ai_tags=ai_tags,
-                embedding=ai_embedding,
             ))
 
         # Update chunk_count for all chunks
@@ -222,8 +262,4 @@ class StructuralChunkingPipeline:
     def close_spider(self):
         spider = getattr(getattr(self, "crawler", None), "spider", None)
         if self.stats["chunks_generated"] > 0:
-            self.stats["avg_chunk_tokens"] = int(round(
-                sum(c.token_count for c in getattr(spider, '_chunks', []))
-                / self.stats["chunks_generated"], 1
-            ))
-        logger.info("[Chunking] Pipeline stats: %s", self.stats)
+            logger.info("[Chunking] Pipeline stats: %s", self.stats)
