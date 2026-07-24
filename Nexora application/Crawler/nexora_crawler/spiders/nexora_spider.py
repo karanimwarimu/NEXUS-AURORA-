@@ -28,6 +28,7 @@ from urllib.parse import urlparse
 
 import scrapy
 from parsel import Selector
+from scrapy.exceptions import CloseSpider
 
 from nexora_crawler.items import NexoraPageItem
 
@@ -405,8 +406,8 @@ class NexoraSpider(scrapy.Spider):
         )
 
         if self.pages_crawled >= self.max_pages:
-            logger.debug("[page] max_pages limit reached; not following links from %s", response.url)
-            return
+            logger.info("[page] max_pages reached (%d) — closing spider", self.max_pages)
+            raise CloseSpider("max_pages_reached")
 
         # Follow internal links in multi-page mode
         if self.mode == "multi-page" and current_depth < self.max_depth:

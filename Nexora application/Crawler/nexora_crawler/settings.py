@@ -212,7 +212,13 @@ if NEXORA_PLAYWRIGHT_ENABLED:
     }
 
     PLAYWRIGHT_MAX_PAGES_PER_CONTEXT = 5
-    PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 30000
+    PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 60000
+
+    # Block heavy/analytics resource types at the Playwright route level so
+    # they never reach the network. Complements the JS-level blocking in
+    # PlaywrightResourceBlocker middleware (which also intercepts fetch/XHR
+    # and sendBeacon for analytics).
+    PLAYWRIGHT_BLOCKED_RESOURCE_TYPES = {'image', 'font', 'media', 'ping'}
 
     # Playwright-support middlewares. NOTE: ScrapyPlaywrightDownloadHandler is
     # a DOWNLOAD HANDLER (registered in DOWNLOAD_HANDLERS above) — it must NOT

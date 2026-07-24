@@ -66,7 +66,15 @@ class ExponentialBackoffMiddleware:
         return response
 
     async def process_exception(self, request, exception):
-        """Handle connection errors with backoff."""
+        """Handle connection errors with backoff.
+
+        IgnoreRequest is a filtering signal, not a retryable transport
+        error. Let it propagate normally so Scrapy drops the URL once.
+        """
+        from scrapy.exceptions import IgnoreRequest
+        if isinstance(exception, IgnoreRequest):
+            return None
+
         retries = request.meta.get("retry_times", 0)
         max_retries = self.crawler.settings.getint("RETRY_TIMES", 3)
 

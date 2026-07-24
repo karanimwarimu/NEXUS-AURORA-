@@ -72,6 +72,15 @@ _BLOCKED_QUERY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# State-changing path segments that should never be crawled, regardless of
+# query string. HN-style sites put the action in the path (/vote?id=...)
+# rather than the query, so a segment-level check catches what regex
+# path-pattern misses.
+BLOCKED_PATH_SEGMENTS = {
+    "vote", "hide", "login", "logout", "submit", "flag",
+    "favorite", "reply", "register", "signup", "account",
+}
+
 # Crawl-infrastructure files that are intentionally non-HTML: robots.txt
 # (text/plain, consumed by RobotsTxtMiddleware) and sitemap XML variants
 # (sitemap.xml / sitemap_index.xml / sitemap-1.xml[.gz], consumed by the
@@ -132,6 +141,12 @@ class ContentTypeFilterMiddleware:
         if _BLOCKED_RE.search(path):
             log.debug("[BLOCK-req] path pattern match -> %s", _short(request.url))
             raise IgnoreRequest(f"Blocked URL pattern: {request.url}")
+
+        # Path-segment check for state-changing actions (e.g. HN /vote?id=...)
+        path_segments = [seg for seg in path.strip("/").split("/") if seg]
+        if any(seg.lower() in BLOCKED_PATH_SEGMENTS for seg in path_segments):
+            log.debug("[BLOCK-req] path segment match -> %s", _short(request.url))
+            raise IgnoreRequest(f"Blocked state-changing path segment: {request.url}")
 
         if query and _BLOCKED_QUERY_RE.search(query):
             log.debug("[BLOCK-req] query pattern match -> %s", _short(request.url))

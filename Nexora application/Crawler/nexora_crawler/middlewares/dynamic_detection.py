@@ -490,33 +490,37 @@ class DynamicDetectionMiddleware:
         """Build JavaScript that patches common bot detection properties.
         
         Patches:
-        - navigator.webdriver -> undefined
-        - window.chrome.runtime -> present
-        - navigator.plugins -> realistic plugins
+        - Navigator.prototype.webdriver -> undefined (prototype-level)
+        - window.chrome -> populated object (runtime, csi, loadTimes, app)
+        - navigator.plugins -> realistic Chrome plugin list
         - navigator.mimeTypes -> realistic MIME types
         - navigator.permissions.query -> safe notifications
         - WebGL vendor/renderer -> spoofed Intel values
         """
         return """
         (() => {
-            // Patches navigator.webdriver
-            const navigatorProxy = new Proxy(navigator, {
-                get: (target, prop) => {
-                    if (prop === 'webdriver') return undefined;
-                    return target[prop];
-                }
-            });
-            Object.defineProperty(navigator, 'webdriver', {
+            // 1) Patch Navigator.prototype.webdriver so new navigator
+            //    instances inherit the override. Some sites check the
+            //    prototype getter directly; a plain Object.defineProperty
+            //    on the instance is not sufficient.
+            try { delete Navigator.prototype.webdriver; } catch (e) {}
+            Object.defineProperty(Navigator.prototype, 'webdriver', {
                 get: () => undefined,
                 configurable: true
             });
-            
-            // Creates chrome.runtime if missing
-            window.chrome = window.chrome || {};
-            window.chrome.runtime = window.chrome.runtime || {};
-            window.chrome.loadTimes = () => {};
-            
-            // Patches navigator.plugins
+
+            // 2) Provide a realistic window.chrome object. Playwright's
+            //    Chromium does not populate this by default, and many
+            //    anti-bot checks (sannysoft "Chrome (New)", CDP probes)
+            //    fail when it is missing entirely.
+            window.chrome = {
+                runtime: {},
+                csi: function() {},
+                loadTimes: function() {},
+                app: {}
+            };
+
+            // 3) Patches navigator.plugins
             Object.defineProperty(navigator, 'plugins', {
                 get: () => [
                     {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer'},
@@ -525,7 +529,7 @@ class DynamicDetectionMiddleware:
                 configurable: true
             });
             
-            // Patches navigator.mimeTypes
+            // 4) Patches navigator.mimeTypes
             Object.defineProperty(navigator, 'mimeTypes', {
                 get: () => [
                     {type: 'application/pdf', suffixes: 'pdf', description: ''},
@@ -534,7 +538,7 @@ class DynamicDetectionMiddleware:
                 configurable: true
             });
             
-            // Safe permissions.query — only handle notifications
+            // 5) Safe permissions.query — only handle notifications
             const originalQuery = window.navigator.permissions.query;
             window.navigator.permissions.query = (parameters) => (
                 parameters.name === 'notifications'
@@ -542,7 +546,7 @@ class DynamicDetectionMiddleware:
                     : originalQuery(parameters)
             );
             
-            // Spoofs WebGL vendor to avoid GPU fingerprinting
+            // 6) Spoof WebGL vendor to avoid GPU fingerprinting
             const getParameter = WebGLRenderingContext.prototype.getParameter;
             WebGLRenderingContext.prototype.getParameter = function(parameter) {
                 if (parameter === 37445) return 'Intel Inc.';

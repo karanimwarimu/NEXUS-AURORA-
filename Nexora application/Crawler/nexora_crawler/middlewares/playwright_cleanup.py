@@ -29,8 +29,18 @@ class PlaywrightCleanupMiddleware:
                 await page.close()
                 logger.debug("[PlaywrightCleanup] Closed page for %s", request.url)
             except Exception as exc:
-                logger.warning("[PlaywrightCleanup] Page close failed for %s: %s",
-                               request.url, exc)
+                # On Windows the event loop may already be closed by the
+                # time cleanup runs (scrapy-playwright 0.0.48 + Proactor
+                # interaction). That specific error is harmless — the
+                # process is exiting anyway — so silence it to keep logs
+                # readable for real errors.
+                msg = str(exc)
+                if "Event loop is closed" in msg or "Task was destroyed" in msg:
+                    logger.debug("[PlaywrightCleanup] Silenced shutdown noise for %s: %s",
+                                 request.url, exc)
+                else:
+                    logger.warning("[PlaywrightCleanup] Page close failed for %s: %s",
+                                   request.url, exc)
 
     async def process_response(self, request, response):
 

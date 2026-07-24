@@ -72,12 +72,28 @@ class SitemapDetector:
         """Find all sitemap URLs for a given website.
 
         Strategy:
-        1. Check robots.txt for Sitemap: directives
-        2. Try common sitemap paths via HEAD request
-        3. Return empty list if nothing found
+        1. Resolve the seed URL through redirects so discovery runs against
+           the actual serving domain (e.g. golang.org -> go.dev).
+        2. Check robots.txt for Sitemap: directives
+        3. Try common sitemap paths via HEAD request
+        4. Return empty list if nothing found
         """
-        parsed = urlparse(url)
-        base = f"{parsed.scheme}://{parsed.netloc}"
+        # 0. Resolve redirects on the seed URL so sitemap discovery runs
+        #    against the final serving domain, not the redirect source.
+        try:
+            client = self._client_or_raise()
+            seed_resp = await client.get(url)
+            seed_resp.raise_for_status()
+            # httpx.URL.netloc can be bytes; normalize to str for URL building.
+            netloc = seed_resp.url.netloc
+            if isinstance(netloc, bytes):
+                netloc = netloc.decode("ascii")
+            base = f"{seed_resp.url.scheme}://{netloc}"
+        except Exception as exc:
+            log.debug("Seed URL resolution failed for %s: %s — falling back to original host", url, exc)
+            parsed = urlparse(url)
+            base = f"{parsed.scheme}://{parsed.netloc}"
+
         found: list[str] = []
 
         # 1. robots.txt
