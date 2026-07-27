@@ -220,6 +220,12 @@ if NEXORA_PLAYWRIGHT_ENABLED:
     # and sendBeacon for analytics).
     PLAYWRIGHT_BLOCKED_RESOURCE_TYPES = {'image', 'font', 'media', 'ping'}
 
+    # Per-request abort callback for route-level resource blocking.
+    # Returns True to abort the request, False to continue.
+    PLAYWRIGHT_ABORT_REQUEST = (
+        "nexora_crawler.middlewares.dynamic_detection._abort_blocked_resources"
+    )
+
     # Playwright-support middlewares. NOTE: ScrapyPlaywrightDownloadHandler is
     # a DOWNLOAD HANDLER (registered in DOWNLOAD_HANDLERS above) — it must NOT
     # also be listed here as a middleware, or a second handler instance (and

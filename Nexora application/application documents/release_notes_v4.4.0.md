@@ -44,6 +44,8 @@ This release is the **debug stabilization pass** over v4.3.0. A 10-test live QA 
 | 12 | Action-link crawl hygiene | `middlewares/__init__.py` | Added `/vote`, `/hide`, `/submit` path patterns + `_BLOCKED_QUERY_RE` for `action=`/`mobileaction=` query params. Prevents 429 storms from action endpoints. |
 | 13 | Provider fallback architecture | `AI_Utilities/embedding_engine.py`, `pipelines/ai_enrichment.py`, `pipelines/chunking_pipeline.py`, `settings.py` | When primary AI provider hits the circuit breaker, calls transparently route to a secondary provider. New `NEXORA_AI_FALLBACK_PROVIDER/MODEL/BASE_URL/API_KEY` settings. Fallback has its own independent breaker. |
 | 14 | Anti-bot stealth validation | `dynamic_detection.py`, `settings.py` | Stealth args (`--disable-blink-features=AutomationControlled`) and `_build_stealth_script()` were added in Step 10; Step 11 documents the test plan for scrapingcourse.com. |
+| 15 | crawl_id propagation | `api.py`, `nexora_spider.py` | `api.py:_run_crawl_sync` now generates a UUID and passes it to the spider via `crawl_id`. Every row in the SQLite `pages` table now has a non-empty `crawl_id`, enabling multi-crawl traceability and `--crawl-id` filtering in `enrich.py`. |
+| 16 | PLAYWRIGHT_BLOCKED_RESOURCE_TYPES wiring | `dynamic_detection.py`, `settings.py` | Route-level abort callback (`PLAYWRIGHT_ABORT_REQUEST`) blocks `image`, `font`, `media`, and `ping` requests before they reach the Playwright network. Complements the existing JS-level analytics blocking in `playwright_resource_blocker.py`. Verified: 26/26 image requests aborted on Wikipedia, 17/17 on react-shopping-cart, 1/1 font request aborted on quotes.toscrape.com/js/. |
 
 ### Test Fixture Update
 

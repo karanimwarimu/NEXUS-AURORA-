@@ -1,8 +1,8 @@
-# NEXUS AURORA v4.3.0
+# NEXUS AURORA v4.5.0
 
 > AI-powered website intelligence platform with static-first routing, browser-aware extraction, multi-format storage engine, on-demand AI enrichment (default), eager inline enrichment (fallback), and vector indexing for production-grade RAG and web intelligence workflows.
 
-[![Version](https://img.shields.io/badge/version-4.4.0-blue)]()
+[![Version](https://img.shields.io/badge/version-4.5.0-blue)]()
 [![Python](https://img.shields.io/badge/python-3.11+-green)]()
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
 [![Status](https://img.shields.io/badge/status-phase%204B%20tested-brightgreen)]()
@@ -12,7 +12,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
-- [What's New in v4.2.1](#whats-new-in-v421)
+- [What's New in v4.5.0](#whats-new-in-v450)
 - [Features](#features)
 - [Architecture](#architecture)
   - [Complete Pipeline Chain](#complete-pipeline-chain)
@@ -43,24 +43,31 @@
 
 On top of the Phase 4A storage engine, **v4.3.0 completes Phase 4B verification**: per-page AI summarization and tagging, sentence-transformers embeddings via the Hugging Face router, structural chunking, and vector indexing into Chroma (local) or pgvector/Supabase (production) — all behind a provider-agnostic interface. **Crawl and enrichment are now decoupled:** by default (`on_demand` mode), crawls are fast with no AI calls. AI enrichment runs later via the offline `enrich.py` command or inline via `eager` mode.
 
-> **Current Phase: 4B (v4.4.0)** — 14-step debug campaign complete. All P0/P1 runtime bugs from the 2026-07-20 QA run fixed and verified. Provider fallback architecture added. See `outputs/qa_run_20260720/NEXORA_DEBUG_REPORT.md`.
+> **Current Phase: 4B (v4.5.0)** — 14-step debug campaign complete (v4.4.0). All P0/P1 runtime bugs fixed and verified. Provider fallback architecture added. Open items from Debug Round 2 (crawl_id propagation + Playwright resource blocking) resolved and verified.
 
 ---
 
-## What's New in v4.4.0
+## What's New in v4.5.0
+
+| Feature | Description |
+|---------|-------------|
+| **crawl_id propagation fixed** | `api.py` now generates a UUID per crawl and passes it to the spider. Every row in the SQLite `pages` table now has a non-empty `crawl_id`, enabling multi-crawl traceability and `--crawl-id` filtering in `enrich.py`. Verified on books.toscrape.com, quotes.toscrape.com/js/, and react-shopping-cart. |
+| **PLAYWRIGHT_BLOCKED_RESOURCE_TYPES wired** | `dynamic_detection.py` now registers a Playwright route-level abort callback (`PLAYWRIGHT_ABORT_REQUEST`) that blocks `image`, `font`, `media`, and `ping` requests before they reach the network. Uses the correct scrapy-playwright mechanism (`PLAYWRIGHT_ABORT_REQUEST`, not `playwright_page_methods` which fires too late). Verified: 17/17 image requests aborted on react-shopping-cart, 26/26 on Wikipedia, 1/1 font on quotes.toscrape.com/js/. |
+
+### v4.4.0 (Previous Release)
 
 | Feature | Description |
 |---------|-------------|
 | **14-step debug campaign** | Live 10-test QA run (2026-07-20) exposed 6 runtime bugs + 1 split-brain path bug. All fixed and verified. |
-| **`__skip` crash fixed** | Duplicate pages now cleanly drop via `scrapy.exceptions.DropItem` instead of crashing with `KeyError`. Recovered ~5–60% of items on dup-heavy sites. |
-| **MarkdownPipeline srcset crash fixed** | `_descriptor_weight()` and `_safe_dimension()` handle `2x`/`100%`/`auto`/trailing-comma srcsets. Wikipedia RAG-blocking crash eliminated. |
-| **robots.txt enforcement fixed** | `ContentTypeFilterMiddleware` now lets `/robots.txt` and `sitemap*.xml` through before content-type blocking. 38 forbidden URLs observed on Wikipedia post-fix. |
-| **Parquet empty-struct fix** | Catch-all JSON-stringify prevents PyArrow `struct<>` inference from unwritable empty dicts. Parquet rows exported: 0 → >0 in affected runs. |
-| **Eager-mode circuit breaker** | After 3 consecutive AI failures, all further calls are skipped for the run. Prevents multi-hour timeout drains from dead/quota-exhausted providers. |
-| **Provider fallback architecture** | New `NEXORA_AI_FALLBACK_PROVIDER/MODEL/BASE_URL/API_KEY` settings. When primary breaker opens, embeddings and LLM calls transparently route to a secondary provider. |
-| **Split-brain DB path fix** | `NEXORA_METADATA_DB` and `NEXORA_CHROMA_PATH` resolved against settings file directory, not CWD. `enrich.py` now operates on real crawl data. |
-| **Action-link crawl hygiene** | `/vote`, `/hide`, `/submit` path patterns + `action=`/`mobileaction=` query param blocking. Prevents 429 storms from action endpoints. |
-| **Test 02 fixture refreshed** | Dead `react-shopping-cart-67007.firebaseapp.com` (404) replaced with live `react-shopping-cart-67954.firebaseapp.com` (200). |
+| **`__skip` crash fixed** | Duplicate pages now cleanly drop via `scrapy.exceptions.DropItem` instead of crashing with `KeyError`. |
+| **MarkdownPipeline srcset crash fixed** | `_descriptor_weight()` and `_safe_dimension()` handle `2x`/`100%`/`auto`/trailing-comma srcsets. |
+| **robots.txt enforcement fixed** | `ContentTypeFilterMiddleware` now lets `/robots.txt` and `sitemap*.xml` through before content-type blocking. |
+| **Parquet empty-struct fix** | Catch-all JSON-stringify prevents PyArrow `struct<>` inference from unwritable empty dicts. |
+| **Eager-mode circuit breaker** | After 3 consecutive AI failures, all further calls are skipped for the run. |
+| **Provider fallback architecture** | New `NEXORA_AI_FALLBACK_*` settings. When primary breaker opens, calls route to a secondary provider. |
+| **Split-brain DB path fix** | Paths resolved against settings file directory, not CWD. |
+| **Action-link crawl hygiene** | `/vote`, `/hide`, `/submit` path patterns + `action=`/`mobileaction=` query param blocking. |
+| **Test 02 fixture refreshed** | Dead fixture replaced with live `react-shopping-cart-67954.firebaseapp.com` (200). |
 
 ### v4.3.0 (Previous Release)
 
@@ -551,19 +558,23 @@ All three are **settings-only changes** — no code changes required. See [`Proj
 | **2.6** | ✅ Complete | FastAPI REST API + interactive CLI + sitemap discovery |
 | **3** | ✅ Complete (3.4) | DynamicDetectionMiddleware with 8-signal engine, 85-90% accuracy |
 | **4A** | ✅ Complete (v4.1.0) | Storage & Multi-Format Ingestion Engine |
-| **4B** | ✅ Complete + Tested (v4.4.0) | AI enrichment, embeddings, chunking, vector indexing. 14-step debug campaign (Steps 1–14) fixed all P0/P1 runtime bugs. Provider fallback added. |
+| **4B** | ✅ Complete + Tested (v4.5.0) | AI enrichment, embeddings, chunking, vector indexing. 14-step debug campaign (Steps 1–14) fixed all P0/P1 runtime bugs. Provider fallback added. Open items (crawl_id + resource blocking) resolved and verified. |
 | **5** | 📋 Planned | Distributed crawling, shared profile cache |
 | **6** | 📋 Planned | Tauri desktop application |
 | **7** | 📋 Planned | Hybrid search, list_all for migration tooling |
 
 ---
 
-## Known Limitations (v4.4.0)
+## Known Limitations (v4.5.0)
 
 - **Full re-validation matrix not yet re-run** — Tests 06/07/08 need full-scale re-runs with working AI provider + Playwright active (deferred per operator).
 - **Step 11/12/13/14 live validation pending** — unit checks and code changes done; live crawl verification blocked on environment readiness (Playwright chromium, HF quota/top-up or local Ollama).
-- **`crawl_id` not populated** — schema enricher never sets it; `--crawl-id` filtering returns all rows for now.
 - **Chunk size overshoot** — avg ≈ 680 tokens/chunk vs 512 target (overlap-driven; tracked as nice-to-have).
+
+### Resolved in v4.5.0
+
+- ~~`crawl_id` not populated~~ — `api.py` now generates a UUID per crawl and passes it to the spider; every SQLite row has a non-empty `crawl_id`.
+- ~~`PLAYWRIGHT_BLOCKED_RESOURCE_TYPES` not wired~~ — Route-level abort callback blocks image/font/media/ping requests before they reach the network.
 
 ### Resolved in v4.4.0
 
@@ -576,9 +587,20 @@ All three are **settings-only changes** — no code changes required. See [`Proj
 - ~~Split-brain metadata DB~~ — `_anchored_path()` resolves relative paths against settings file directory.
 - ~~`enrich.py` missing helpers~~ — `_build_crawler()`, `_collect_targets()`, `_enrich_row()` implemented.
 - ~~`enrich.py --limit` None crash~~ — `_limit_clause()` omits LIMIT when `None`; filter + cap compose correctly.
-- ~~`_enrich_row` reads `ai_tags` vs `ai_tags_json`~~ — Deserializes from DB column; write-back preserves existing data.
+- ~~`_enrich_row` reads `ai_tags` vs DB column `ai_tags_json`~~ — Deserializes from DB column; write-back preserves existing data.
 - ~~`token_count` float from `//4.5`~~ — `_estimate_tokens()` always returns `int`.
 - ~~`build_vector_store()` fallback defaults diverge~~ — `_cfg()` resolver chains env → settings → default.
+- ~~Provider fallback architecture~~ — Circuit breaker routes to secondary provider when primary is exhausted.
+- ~~Action-link crawl hygiene~~ — Path patterns + query param blocking for state-changing endpoints.
+- ~~Test 02 fixture refreshed~~ — Dead Firebase URL replaced with live deployment.
+- ~~Playwright wiring (4 sub-defects)~~ — Handler deduplication, text-density fix, txt/xml exclusion, dupefilter bypass for PW retry.
+- ~~Anti-bot stealth leak~~ — Prototype-level `webdriver` patch + full `window.chrome` object.
+- ~~ExponentialBackoff retries IgnoreRequest~~ — `IgnoreRequest` early-exit in `process_exception`.
+- ~~Playwright shutdown noise~~ — Silenced `Event loop is closed` / `Task was destroyed` messages.
+- ~~No early exit on max-pages cap~~ — `CloseSpider` raises immediately when cap is hit.
+- ~~Playwright timeout too short~~ — `PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT` 30s → 60s.
+- ~~Sitemap discovery misses redirected paths~~ — Pre-discovery redirect resolution in `SitemapDetector.discover()`.
+- ~~BLOCKED_PATH_PATTERNS incomplete~~ — Added `BLOCKED_PATH_SEGMENTS` set for path-segment filtering.
 
 ---
 
@@ -589,5 +611,5 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <strong>NEXUS AURORA v4.4.0</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
+  <strong>NEXUS AURORA v4.5.0</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
 </p>

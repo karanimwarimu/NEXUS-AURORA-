@@ -25,6 +25,7 @@ import asyncio #run ssync tasks in background
 import logging
 import os
 import sys # exit the program if needed , access command line arguments
+import uuid
 from contextlib import asynccontextmanager # used for defining async context managers , manage startup and shutdown events in FastAPI
 from datetime import datetime
 from typing import Literal
@@ -483,12 +484,14 @@ def _run_crawl_sync(url: str, strategy: str, max_pages: int):
     settings = get_project_settings()
     settings.set("LOG_LEVEL", "INFO")
 
+    crawl_id = uuid.uuid4().hex
     process = CrawlerProcess(settings)
     process.crawl(
         "nexora",
         urls=url,
         strategy=strategy,
         max_pages=max_pages,
+        crawl_id=crawl_id,
     )
     process.start()
 

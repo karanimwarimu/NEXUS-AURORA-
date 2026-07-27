@@ -1,6 +1,6 @@
 # Repository Structure
 
-> NEXUS AURORA v4.4.0 — reflects the current state including debug campaign fixes (Steps 1–14), provider fallback architecture, and action-link crawl hygiene.
+> NEXUS AURORA v4.5.0 — reflects the current state including debug campaign fixes (Steps 1–14), provider fallback architecture, action-link crawl hygiene, crawl_id propagation, and Playwright resource blocking.
 
 ```text
 .
@@ -8,25 +8,27 @@
 ├── LICENSE
 ├── README.md
 ├── REPOSITORY_STRUCTURE.md
-├── release_notes_v4.4.0.md                              ★ new: v4.4.0 release notes
+├── release_notes_v4.4.0.md                              ★ v4.4.0 release notes
+├── release_notes_v4.5.0.md                              ★ new: v4.5.0 release notes
 ├── Nexora application/
 │   ├── application documents/
-│   │   └── requirements.txt
+│   │   ├── requirements.txt
+│   │   └── release_notes_v4.5.0.md                      ★ v4.5.0 release notes
 │   ├── Crawler/
 │   │   ├── __init__.py
 │   │   ├── scrapy.cfg
-│   │   ├── enrich.py                                    ★ NEW: offline on-demand enrichment CLI
+│   │   ├── enrich.py                                    ★ offline on-demand enrichment CLI
 │   │   ├── nexora_crawler/
 │   │   │   ├── .env                                     ← secrets + Phase 4B toggles (synced to settings.py)
-│   │   │   ├── api.py                                   ← FastAPI + interactive CLI + enrich_mode wiring
+│   │   │   ├── api.py                                   ← FastAPI + interactive CLI + enrich_mode wiring + crawl_id generation
 │   │   │   ├── items.py                                 ← Phase 4A/4B item fields (incl. vector_backend)
-│   │   │   ├── settings.py                              ← pipeline chain (100→600) + 4B config + NEXORA_ENRICH_MODE
+│   │   │   ├── settings.py                              ← pipeline chain (100→600) + 4B config + NEXORA_ENRICH_MODE + PLAYWRIGHT_ABORT_REQUEST
 │   │   │   ├── sitemap_detector.py
 │   │   │   ├── spiders/
 │   │   │   │   └── nexora_spider.py
 │   │   │   ├── middlewares/
 │   │   │   │   ├── __init__.py
-│   │   │   │   ├── dynamic_detection.py                 ← Phase 3 Core: JS vs Static detection
+│   │   │   │   ├── dynamic_detection.py                 ← Phase 3 Core: JS vs Static detection + PLAYWRIGHT_ABORT_REQUEST callback + stealth script
 │   │   │   │   ├── exponential_backoff.py
 │   │   │   │   ├── playwright_cleanup.py
 │   │   │   │   └── playwright_resource_blocker.py
@@ -101,9 +103,9 @@
 ## Key Components
 
 ### Phase 3 — Dynamic Detection Middleware
-- **`Crawler/nexora_crawler/middlewares/dynamic_detection.py`** — Core decision engine routing requests to static HTTP or Playwright JS rendering. Uses 8 signals: framework markers, script ratio, text density, body length, anti-bot patterns, SPA mount points, bundle patterns, and noscript tags.
-- **`Crawler/nexora_crawler/middlewares/exponential_backoff.py`** — Exponential backoff retry for 429/503/408.
-- **`Crawler/nexora_crawler/middlewares/playwright_resource_blocker.py`** — Blocks images/fonts/analytics in Playwright pages.
+- **`Crawler/nexora_crawler/middlewares/dynamic_detection.py`** — Core decision engine routing requests to static HTTP or Playwright JS rendering. Uses 8 signals: framework markers, script ratio, text density, body length, anti-bot patterns, SPA mount points, bundle patterns, and noscript tags. Contains `_abort_blocked_resources()` callback for route-level resource blocking.
+- **`Crawler/nexora_crawler/middlewares/exponential_backoff.py`** — Exponential backoff retry for 429/503/408 (with `IgnoreRequest` guard).
+- **`Crawler/nexora_crawler/middlewares/playwright_resource_blocker.py`** — Blocks images/fonts/analytics in Playwright pages at the JS level.
 - **`tests/real_site_benchmark_phase3.py`** — 50-site benchmark across 8 categories.
 
 ### Phase 4A — Storage & Multi-Format Ingestion Engine ✅ (v4.1.0)
@@ -116,7 +118,7 @@
 - **`data/nexora_metadata.db`** — Auto-created SQLite metadata store.
 - **`tests/test_phase4a.py`** — 18-test suite.
 
-### Phase 4B — AI Enrichment & Vector Indexing ✅ (v4.4.0)
+### Phase 4B — AI Enrichment & Vector Indexing ✅ (v4.5.0)
 - **`Crawler/nexora_crawler/AI_Utilities/embedding_engine.py`** — `UnifiedEmbeddingEngine`. Provider-aware: `huggingface` → HF router legacy `feature-extraction` endpoint; others → LiteLLM `aembedding`. Circuit breaker prevents timeout drains; fallback engine routes to secondary provider when primary is quota-exhausted.
 - **`Crawler/nexora_crawler/pipelines/ai_enrichment.py`** — `AIEnrichmentPipeline` (250): LLM summary + tags. Circuit breaker skips remaining pages after N consecutive failures; fallback provider retries LLM calls when breaker opens. Includes `_truncate_text()` for clean prompt boundaries.
 - **`Crawler/nexora_crawler/pipelines/chunking_pipeline.py`** — `StructuralChunkingPipeline` (260): Markdown → `NexoraChunk` (~512 tokens), per-chunk `embed_batch()` embeddings (replaces inherited page-level embedding). `_estimate_tokens()` single source of truth, always `int`.
@@ -127,18 +129,22 @@
 - **`Crawler/nexora_crawler/pipelines/test_vector_store.py`** — proves embeddings are stored in and retrieveable from Chroma (health, count, sample records, round-trip search).
 - **`Project Tools/switch_model_guide.md`** — change model/provider/backend via settings only.
 
-### On-Demand Enrichment Rework + Debug Campaign (v4.4.0)
-- **`Crawler/nexora_crawler/settings.py`** — `NEXORA_ENRICH_MODE` flag (`"eager"` | `"on_demand"`). Conditional `ITEM_PIPELINES` (8 pipelines in on_demand, 11 in eager). `_anchored_path()` resolves relative DB/chroma paths against settings file directory. `NEXORA_AI_FAILFAST_THRESHOLD` and `NEXORA_AI_FALLBACK_*` settings for circuit breaker + provider fallback.
+### On-Demand Enrichment Rework + Debug Campaign (v4.4.0 – v4.5.0)
+- **`Crawler/nexora_crawler/settings.py`** — `NEXORA_ENRICH_MODE` flag (`"eager"` | `"on_demand"`). Conditional `ITEM_PIPELINES` (8 pipelines in on_demand, 11 in eager). `_anchored_path()` resolves relative DB/chroma paths against settings file directory. `NEXORA_AI_FAILFAST_THRESHOLD` and `NEXORA_AI_FALLBACK_*` settings for circuit breaker + provider fallback. `PLAYWRIGHT_ABORT_REQUEST` for route-level resource blocking.
+- **`Crawler/nexora_crawler/api.py`** — `enrich_mode` in `CrawlRequest`/`CrawlResponse`, `_normalize_enrich_mode()`, subprocess env forwarding, settings reload in `run_cli_direct()`. Now generates `crawl_id = uuid.uuid4().hex` per crawl.
+- **`Crawler/nexora_crawler/spiders/nexora_spider.py`** — Accepts `crawl_id` parameter; `CloseSpider` on `max_pages` cap.
 - **`Crawler/nexora_crawler/storage/local_sqlite.py`** — `_migrate_schema()` (markdown_preview→markdown), `_limit_clause()` (None-safe LIMIT), `get_unenriched_pages()`, `update_enrichment()`.
 - **`Crawler/nexora_crawler/items.py`** — `vector_backend`, `ai_status` fields. Removed non-functional mangled `__skip` field.
-- **`Crawler/nexora_crawler/api.py`** — `enrich_mode` in `CrawlRequest`/`CrawlResponse`, `_normalize_enrich_mode()`, subprocess env forwarding, settings reload in `run_cli_direct()`.
 - **`Crawler/enrich.py`** — Offline enrichment CLI with `_build_crawler()`, `_collect_targets()`, `_enrich_row()`. Deserializes `ai_tags_json`; write-back preserves existing summary/tags when new values are empty.
 - **`Crawler/nexora_crawler/pipelines/__init__.py`** — `NexoraExtractionPipeline` uses `scrapy.exceptions.DropItem` for duplicates (was `__skip` KeyError). Dead `__skip` guards removed.
 - **`Crawler/nexora_crawler/pipelines/parquet_export.py`** — Catch-all JSON-stringify for nested fields prevents PyArrow `struct<>` inference from unwritable empty dicts.
-- **`Crawler/nexora_crawler/middlewares/__init__.py`** — `_INFRA_PATH_RE` pass-through for `/robots.txt` and `sitemap*.xml`. `_BLOCKED_QUERY_RE` blocks action query params (`vote`, `hide`, `submit`, `action=history`, etc.).
+- **`Crawler/nexora_crawler/middlewares/__init__.py`** — `_INFRA_PATH_RE` pass-through for `/robots.txt` and `sitemap*.xml`. `_BLOCKED_QUERY_RE` blocks action query params (`vote`, `hide`, `submit`, `action=history`, etc.). `BLOCKED_PATH_SEGMENTS` set for path-segment filtering.
+- **`Crawler/nexora_crawler/middlewares/exponential_backoff.py`** — `IgnoreRequest` early-exit in `process_exception`.
+- **`Crawler/nexora_crawler/middlewares/playwright_cleanup.py`** — Silenced shutdown noise (`Event loop is closed` / `Task was destroyed`).
+- **`Crawler/nexora_crawler/sitemap_detector.py`** — Pre-discovery redirect resolution in `discover()`.
 - **`Extractor/multimodal_extractor.py`** — `_descriptor_weight()` and `_safe_dimension()` handle `2x`/`100%`/`auto`/trailing-comma srcsets.
 - **`outputs/audit/`** — 45-test verification suite (39 PASS, 5 FAIL, 1 SKIP). See `NEXORA_PHASE4B_TEST_SUMMARY.md` for details.
-- **`outputs/qa_run_20260720/`** — Live 10-test QA scorecard + 14-step debug campaign log.
+- **`outputs/qa_run_20260720/`** — Live 10-test QA scorecard + 14-step debug campaign log + open items resolution (crawl_id + resource blocking).
 
 ### Phase 4+ — Future
 - **`PHASE_4_AI_ANALYTICS.md`** — ML-based site classification, smart routing

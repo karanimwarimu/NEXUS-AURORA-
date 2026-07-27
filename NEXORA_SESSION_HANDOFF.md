@@ -1,12 +1,19 @@
 # Nexora — Session Handoff
 
-**Last Session:** 2026-07-21  
-**Build State:** v4.4.0 + 14-step debug campaign complete (all fixes verified via `py_compile` + live QA logs)  
+**Last Session:** 2026-07-27  
+**Build State:** v4.5.0 — v4.4.0 + 14-step debug campaign complete + open items from Debug Round 2 (crawl_id propagation + Playwright resource blocking) resolved and verified  
 **Next Session Goal:** Live re-validation matrix (Tests 06/07/08 full-scale, Test 02/09/11/12/13/14 live validation)
 
 ---
 
 ## What Was Accomplished This Session
+
+### Open Items Resolution (2026-07-27)
+
+| Item | Status | Description |
+|------|--------|-------------|
+| 1 | ✅ Fixed & Verified | `crawl_id` propagation — `api.py` now generates UUID per crawl, passes to spider. All SQLite rows have non-empty `crawl_id`. |
+| 2 | ✅ Fixed & Verified | `PLAYWRIGHT_BLOCKED_RESOURCE_TYPES` wiring — `dynamic_detection.py` registers `PLAYWRIGHT_ABORT_REQUEST` callback blocking image/font/media/ping. |
 
 ### Debug Campaign — 14-Step Fixes (from `outputs/qa_run_20260720/NEXORA_QA_REPORT.md` + `NEXORA_DEBUG_REPORT.md`)
 
@@ -39,7 +46,15 @@
 | 5 | 🟡 MEDIUM | Page-level embeddings inherited by chunks | Removed page-level embedding from `AIEnrichmentPipeline`; added per-chunk `embed_batch()` to `StructuralChunkingPipeline` | ✅ Fixed |
 | 6 | 🟢 LOW | Duplicate `NEXORA_EMBEDDING_DIM` | Removed duplicate definition in vector store section | ✅ Fixed |
 
-### Files Modified (This Session + Previous)
+### Files Modified (This Session)
+
+| File | Changes |
+|------|---------|
+| `Nexora application/Crawler/nexora_crawler/api.py` | Added `import uuid`; `_run_crawl_sync` generates `crawl_id = uuid.uuid4().hex` and passes to spider |
+| `Nexora application/Crawler/nexora_crawler/middlewares/dynamic_detection.py` | Added `_blocked_resource_types` module-level variable + `_abort_blocked_resources()` callback; `__init__` syncs from settings |
+| `Nexora application/Crawler/nexora_crawler/settings.py` | Added `PLAYWRIGHT_ABORT_REQUEST` pointing to `_abort_blocked_resources` |
+
+### Files Modified (Previous Sessions — v4.4.0)
 
 | File | Changes |
 |------|---------|
@@ -56,6 +71,10 @@
 | `Nexora application/Crawler/nexora_crawler/items.py` | Removed mangled `__skip`; declared `ai_status` |
 | `Nexora application/Crawler/enrich.py` | `ai_tags_json` deserialization, write-back preservation, `_limit_clause` usage |
 | `Nexora application/Extractor/multimodal_extractor.py` | `_descriptor_weight()`, `_safe_dimension()`, trailing-comma srcset handling |
+| `Nexora application/Crawler/nexora_crawler/spiders/nexora_spider.py` | `CloseSpider` on `max_pages` cap |
+| `Nexora application/Crawler/nexora_crawler/middlewares/exponential_backoff.py` | `IgnoreRequest` early-exit |
+| `Nexora application/Crawler/nexora_crawler/middlewares/playwright_cleanup.py` | Silenced shutdown noise |
+| `Nexora application/Crawler/nexora_crawler/sitemap_detector.py` | Pre-discovery redirect resolution |
 
 ---
 
@@ -130,8 +149,7 @@
 
 4. **Chunk size tuning** — Overlap mechanism may still push chunks slightly above target. Consider adding `tiktoken` for accurate token counting.
 5. **Background enrichment runner** — Scheduled/cron job for `enrich` (Celery/RQ/async task).
-6. **Populate `crawl_id`** — Schema enricher never sets it; `--crawl-id` filtering returns all rows for now.
-7. **Anti-bot live validation** — Run Test 09/Step 11 command against scrapingcourse.com with Playwright active to confirm graceful behavior.
+6. **Anti-bot live validation** — Run Test 09/Step 11 command against scrapingcourse.com with Playwright active to confirm graceful behavior.
 
 ---
 
@@ -139,13 +157,16 @@
 
 | Document | Location | Status |
 |----------|----------|--------|
+| Release Notes v4.5.0 | `Nexora application/application documents/release_notes_v4.5.0.md` | Current |
 | Release Notes v4.4.0 | `Nexora application/application documents/release_notes_v4.4.0.md` | Current |
 | QA Report | `outputs/qa_run_20260720/NEXORA_QA_REPORT.md` | Current |
 | Debug Campaign | `outputs/qa_run_20260720/NEXORA_DEBUG_REPORT.md` | Current (14 steps) |
+| Open Items (Original) | `outputs/qa_run_20260720/NEXORA_OPEN_ITEMS_NEXT_SESSION.md` | Resolved |
+| Debug Round 2 Fixes Applied | `outputs/qa_run_20260720/NEXORA_DEBUG_ROUND2_FIXES_APPLIED.md` | Current |
 | Bug Inventory | `outputs/audit/NEXORA_BUGS_PRIORITIZED.md` | All items fixed |
 | On-Demand Rework Summary | `NEXORA_ONDEMAND_REWORK_SUMMARY.md` | Needs minor update for fallback |
-| Repository Structure | `REPOSITORY_STRUCTURE.md` | Current (v4.4.0) |
-| README | `README.md` | Current (v4.4.0) |
+| Repository Structure | `REPOSITORY_STRUCTURE.md` | Current (v4.5.0) |
+| README | `README.md` | Current (v4.5.0) |
 | Phase 4B Docs | `Project Tools/Phase 4 Documentation/Phase_4B.md` | Current |
 | Model/Provider Switch Guide | `Project Tools/switch_model_guide.md` | Current |
 
@@ -199,10 +220,17 @@ python -m nexora_crawler.api --url https://www.scrapingcourse.com/antibot-challe
 
 # Test 11/12/13/14: Verify via logs
 # Check outputs/ for 429 counts, __skip errors, Parquet row counts, breaker trips
+
+# Verify crawl_id
+python -c "from nexora_crawler.storage.local_sqlite import MetadataStore; store = MetadataStore(); rows = store.query_by_domain('books.toscrape.com'); print(rows[0]['crawl_id'] if rows else 'no rows')"
+
+# Verify resource blocking
+python -m nexora_crawler.api --url https://quotes.toscrape.com/js/ --strategy single-page
+# Check logs for: blocked images/fonts/media/ping
 ```
 
 ### To update docs:
-- `release_notes_v4.4.0.md` — already current
-- `README.md` — already current
-- `REPOSITORY_STRUCTURE.md` — already current
+- `release_notes_v4.5.0.md` — newly created
+- `README.md` — updated to v4.5.0
+- `REPOSITORY_STRUCTURE.md` — updated to v4.5.0
 - `NEXORA_ONDEMAND_REWORK_SUMMARY.md` — add fallback provider section if needed

@@ -121,6 +121,17 @@ PROFILE_CACHE_TTL_SECONDS = 86400
 # Resolve profile DB relative to this file's location
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+# Module-level abort callback for Playwright route-level resource blocking.
+# Updated dynamically by DynamicDetectionMiddleware.__init__ from
+# PLAYWRIGHT_BLOCKED_RESOURCE_TYPES so that PLAYWRIGHT_ABORT_REQUEST
+# can reference it without needing the crawler at call time.
+_blocked_resource_types: set = set()
+
+
+def _abort_blocked_resources(playwright_request) -> bool:
+    """Return True to abort requests whose resource_type is in the blocked set."""
+    return playwright_request.resource_type in _blocked_resource_types
+
 
 class DynamicDetectionMiddleware:
     """
@@ -141,6 +152,12 @@ class DynamicDetectionMiddleware:
         self._profile_cache_timestamps = {}  # domain -> timestamp of last probe
         self._client: Optional[httpx.AsyncClient] = None
         self._init_profile_db()
+        # Update module-level blocked resource types so that
+        # PLAYWRIGHT_ABORT_REQUEST can reference them at request time.
+        global _blocked_resource_types
+        _blocked_resource_types = self.settings.get(
+            "PLAYWRIGHT_BLOCKED_RESOURCE_TYPES", set()
+        )
 
     @classmethod
     def from_crawler(cls, crawler):
