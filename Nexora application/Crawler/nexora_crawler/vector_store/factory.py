@@ -97,3 +97,25 @@ def build_vector_store(backend_name: str = None) -> BaseVectorStore:
         )
 
     raise BackendNotFoundError(f"Unknown vector backend: {backend}")
+
+
+# ---------------------------------------------------------------------------
+# Async helper for FastAPI / API routes
+# ---------------------------------------------------------------------------
+
+_async_store: BaseVectorStore | None = None
+
+
+async def get_vector_store() -> BaseVectorStore:
+    """Build and initialize the vector store once, then cache it.
+
+    Use this in async contexts (FastAPI routes, background tasks) instead of
+    calling ``build_vector_store()`` directly, which returns an un-initialized
+    backend whose ``_collection`` / connection is ``None``.
+    """
+    global _async_store
+    if _async_store is None:
+        _async_store = build_vector_store()
+        await _async_store.initialize()
+        logger.info("[VectorStore] Initialized async store: %s", _async_store.backend_name())
+    return _async_store

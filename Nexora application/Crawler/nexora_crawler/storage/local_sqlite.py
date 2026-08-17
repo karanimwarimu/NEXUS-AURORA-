@@ -26,6 +26,12 @@ class MetadataStore:
         self._init_schema()
 
     def _init_schema(self):
+        # Run non-destructive migrations FIRST so that ALTER TABLE / backfill
+        # happens before any DDL that references the new columns. Without this
+        # ordering, an existing database crashes on the CREATE INDEX statements
+        # below because the column does not exist yet.
+        self._migrate_schema()
+
         with sqlite3.connect(self.db_path) as conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS pages (
@@ -35,6 +41,7 @@ class MetadataStore:
                     title TEXT,
                     timestamp TEXT NOT NULL,
                     crawl_id TEXT NOT NULL,
+                    workspace_id TEXT DEFAULT 'default',
                     markdown TEXT,
                     markdown_word_count INTEGER DEFAULT 0,
                     token_reduction_pct REAL DEFAULT 0.0,
@@ -60,12 +67,14 @@ class MetadataStore:
 
                 CREATE INDEX IF NOT EXISTS idx_pages_domain ON pages(domain);
                 CREATE INDEX IF NOT EXISTS idx_pages_crawl_id ON pages(crawl_id);
+                CREATE INDEX IF NOT EXISTS idx_pages_workspace_id ON pages(workspace_id);
                 CREATE INDEX IF NOT EXISTS idx_pages_website_type ON pages(website_type);
                 CREATE INDEX IF NOT EXISTS idx_pages_timestamp ON pages(timestamp);
                 CREATE INDEX IF NOT EXISTS idx_pages_language ON pages(language);
 
                 CREATE TABLE IF NOT EXISTS crawl_jobs (
                     job_id TEXT PRIMARY KEY,
+                    workspace_id TEXT DEFAULT 'default',
                     url TEXT NOT NULL,
                     strategy TEXT DEFAULT 'whole-website',
                     max_pages INTEGER DEFAULT 100,
@@ -76,42 +85,130 @@ class MetadataStore:
                     completed_at TEXT,
                     error TEXT
                 );
+
+                -- Phase 4C: Webhooks
+                CREATE TABLE IF NOT EXISTS webhooks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace_id TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    event_types TEXT NOT NULL,
+                    secret TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_webhooks_workspace ON webhooks(workspace_id);
+
+                -- Phase 4C: Webhook delivery log
+                CREATE TABLE IF NOT EXISTS webhook_deliveries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    webhook_id INTEGER NOT NULL,
+                    job_id TEXT,
+                    event_type TEXT,
+                    status_code INTEGER,
+                    attempt INTEGER DEFAULT 0,
+                    delivered_at TEXT,
+                    error TEXT,
+                    FOREIGN KEY (webhook_id) REFERENCES webhooks(id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
+
+                -- Phase 4C: Workspace quotas
+                CREATE TABLE IF NOT EXISTS workspace_quotas (
+                    workspace_id TEXT PRIMARY KEY,
+                    pages_per_month INTEGER DEFAULT 10000,
+                    storage_gb INTEGER DEFAULT 1,
+                    vector_records INTEGER DEFAULT 100000,
+                    api_rpm INTEGER DEFAULT 60,
+                    schema_extracts_per_day INTEGER DEFAULT 10,
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+
+                -- Phase 4C: Usage tracking
+                CREATE TABLE IF NOT EXISTS usage_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace_id TEXT NOT NULL,
+                    period TEXT NOT NULL,
+                    pages_crawled INTEGER DEFAULT 0,
+                    storage_bytes INTEGER DEFAULT 0,
+                    vector_records INTEGER DEFAULT 0,
+                    api_calls INTEGER DEFAULT 0,
+                    recorded_at TEXT DEFAULT (datetime('now')),
+                    UNIQUE(workspace_id, period)
+                );
+                CREATE INDEX IF NOT EXISTS idx_usage_workspace_period ON usage_records(workspace_id, period);
+
+                -- Phase 4C: Audit logs
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace_id TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    target_id TEXT,
+                    details TEXT,
+                    ip_address TEXT,
+                    timestamp TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_audit_workspace ON audit_logs(workspace_id);
+                CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);
+                CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp);
+
+                -- Phase 4C: Extraction schemas (for schema-driven crawls)
+                CREATE TABLE IF NOT EXISTS extraction_schemas (
+                    job_id TEXT PRIMARY KEY,
+                    workspace_id TEXT NOT NULL,
+                    schema_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_extraction_schemas_workspace ON extraction_schemas(workspace_id);
             """)
             conn.commit()
-        # Non-destructive migration for databases created before the
-        # `markdown` column existed (they used `markdown_preview`).
-        self._migrate_schema(conn)
         logger.info("[MetadataStore] Schema initialized at %s", self.db_path)
 
-    def _migrate_schema(self, conn):
-        """Reconcile the `pages` table with the current schema without data loss.
+    def _migrate_schema(self):
+        """Reconcile the `pages` and `crawl_jobs` tables with the current schema
+        without data loss.
 
-        Handles the rename markdown_preview -> markdown (Step 2 of the rework):
-        old DBs still expose `markdown_preview`, which breaks insert_page's
-        reference to `markdown`.
+        Handles:
+        - rename markdown_preview -> markdown (Step 2 of the rework)
+        - add workspace_id column to pages and crawl_jobs (Phase 4C integration)
         """
-        cols = {row[1] for row in conn.execute("PRAGMA table_info(pages)").fetchall()}
-        if "markdown" in cols:
-            return
-        if "markdown_preview" in cols:
-            try:
-                conn.execute("ALTER TABLE pages RENAME COLUMN markdown_preview TO markdown")
-                logger.info("[MetadataStore] Migrated markdown_preview -> markdown")
-            except sqlite3.OperationalError:
-                conn.execute("ALTER TABLE pages ADD COLUMN markdown TEXT")
-                conn.execute("UPDATE pages SET markdown = markdown_preview")
-                logger.info("[MetadataStore] Added markdown column (copied from markdown_preview)")
-        else:
-            conn.execute("ALTER TABLE pages ADD COLUMN markdown TEXT")
-            logger.info("[MetadataStore] Added markdown column")
-        conn.commit()
+        with sqlite3.connect(self.db_path) as conn:
+            # --- pages table migrations ---
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(pages)").fetchall()}
+
+            if "markdown" not in cols:
+                if "markdown_preview" in cols:
+                    try:
+                        conn.execute("ALTER TABLE pages RENAME COLUMN markdown_preview TO markdown")
+                        logger.info("[MetadataStore] Migrated markdown_preview -> markdown")
+                    except sqlite3.OperationalError:
+                        conn.execute("ALTER TABLE pages ADD COLUMN markdown TEXT")
+                        conn.execute("UPDATE pages SET markdown = markdown_preview")
+                        logger.info("[MetadataStore] Added markdown column (copied from markdown_preview)")
+                else:
+                    conn.execute("ALTER TABLE pages ADD COLUMN markdown TEXT")
+                    logger.info("[MetadataStore] Added markdown column")
+
+            if "workspace_id" not in cols:
+                conn.execute("ALTER TABLE pages ADD COLUMN workspace_id TEXT DEFAULT 'default'")
+                conn.execute("UPDATE pages SET workspace_id = 'default' WHERE workspace_id IS NULL")
+                logger.info("[MetadataStore] Added workspace_id column to pages (backfilled 'default')")
+
+            # --- crawl_jobs table migrations ---
+            job_cols = {row[1] for row in conn.execute("PRAGMA table_info(crawl_jobs)").fetchall()}
+            if "workspace_id" not in job_cols:
+                conn.execute("ALTER TABLE crawl_jobs ADD COLUMN workspace_id TEXT DEFAULT 'default'")
+                conn.execute("UPDATE crawl_jobs SET workspace_id = 'default' WHERE workspace_id IS NULL")
+                logger.info("[MetadataStore] Added workspace_id column to crawl_jobs (backfilled 'default')")
+
+            conn.commit()
 
     def insert_page(self, item: dict) -> bool:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("""
                     INSERT OR REPLACE INTO pages (
-                        url, domain, title, timestamp, crawl_id,
+                        url, domain, title, timestamp, crawl_id, workspace_id,
                         markdown, markdown_word_count, token_reduction_pct,
                         ai_summary, ai_tags_json, entities_json, price_change_delta,
                         style_analysis_json, quality_scores_json,
@@ -119,13 +216,14 @@ class MetadataStore:
                         total_images, total_videos, has_hero_image,
                         language, website_type, extraction_method,
                         spider_name, depth, playwright_used
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     item.get("url", ""),
                     item.get("domain", ""),
                     item.get("title", ""),
                     item.get("timestamp", ""),
                     item.get("crawl_id", ""),
+                    item.get("workspace_id", "default"),
                     item.get("markdown", ""),
                     item.get("markdown_word_count", 0),
                     item.get("token_reduction_pct", 0.0),

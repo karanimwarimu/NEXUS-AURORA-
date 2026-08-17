@@ -1,19 +1,44 @@
 # Nexora — Session Handoff
 
-**Last Session:** 2026-07-27  
-**Build State:** v4.5.0 — v4.4.0 + 14-step debug campaign complete + open items from Debug Round 2 (crawl_id propagation + Playwright resource blocking) resolved and verified  
-**Next Session Goal:** Live re-validation matrix (Tests 06/07/08 full-scale, Test 02/09/11/12/13/14 live validation)
+**Last Session:** 2026-08-17  
+**Build State:** v4.6.0 + Phase 4C infrastructure hardened & verified  
+**Next Session Goal:** Live re-validation matrix (Tests 06/07/08 full-scale, Test 02/09/11/12/13/14 live validation) + Phase 4C functional tests
 
 ---
 
 ## What Was Accomplished This Session
 
-### Open Items Resolution (2026-07-27)
+### Phase 4C Infrastructure Integration + Remediation (2026-08-17)
 
 | Item | Status | Description |
 |------|--------|-------------|
-| 1 | ✅ Fixed & Verified | `crawl_id` propagation — `api.py` now generates UUID per crawl, passes to spider. All SQLite rows have non-empty `crawl_id`. |
-| 2 | ✅ Fixed & Verified | `PLAYWRIGHT_BLOCKED_RESOURCE_TYPES` wiring — `dynamic_detection.py` registers `PLAYWRIGHT_ABORT_REQUEST` callback blocking image/font/media/ping. |
+| 1 | ✅ Complete | Package structure migration — `api.py` → `api/` package with `__init__.py`, `__main__.py`, `routes/` |
+| 2 | ✅ Complete | `workspace_id` schema migration — added to `pages` + `crawl_jobs`; 429 existing rows backfilled to `'default'` |
+| 3 | ✅ Complete | DB path unification — `api/database/connection.py` points to `NEXORA_METADATA_DB` (no more `nexora.db` divergence) |
+| 4 | ✅ Complete | 6 new Phase 4C tables — `webhooks`, `webhook_deliveries`, `workspace_quotas`, `usage_records`, `audit_logs`, `extraction_schemas` |
+| 5 | ✅ Complete | JWT auth with env-gated dev bypass — `NEXORA_AUTH_BYPASS_ENABLED=false` by default |
+| 6 | ✅ Complete | 6 new route modules — `search`, `webhooks`, `jobs`, `gdpr`, `extract`, `health` |
+| 7 | ✅ Complete | Jobs registry + simplified dispatcher — 5 built-in types (`crawl`, `schema_extract`, `index_search`, `index_add`, `export`) |
+| 8 | ✅ Complete | 15 Phase 4C settings added to `settings.py` |
+| 9 | ✅ Complete | CORS middleware wired; all 21 FastAPI routes registered |
+| 10 | ✅ Fixed | Schema migration crash on pre-existing DBs — `_migrate_schema()` now runs BEFORE DDL |
+| 11 | ✅ Fixed | Subprocess spawn target — both `_run_crawl` and `_run_crawl_subprocess` now point to `__main__.py` |
+| 12 | ✅ Fixed | Vector store initialization — `get_vector_store()` async initializer caches initialized store |
+| 13 | ✅ Fixed | DB write durability — `await db.commit()` added to all mutating routes |
+| 14 | ✅ Fixed | SQL dialect handling — `_is_asyncpg()` helper; correct `$n` / `?` placeholders |
+| 15 | ✅ Fixed | Webhook secret response — `WebhookCreateOut` model includes `secret` field |
+| 16 | ✅ Fixed | Auth bypass security — gated behind `NEXORA_AUTH_BYPASS_ENABLED` (was unconditional) |
+| 17 | ✅ Fixed | Lifespan auto-migration — `MetadataStore()` instantiated on API boot |
+| 18 | ✅ Fixed | Job stubs — handlers return `HTTP 501`; added `GET /v1/jobs/{job_id}` status endpoint |
+| 19 | ✅ Fixed | Dead settings wired — `NEXORA_CORS_ORIGINS` → CORS; `NEXORA_API_WORKERS` → uvicorn |
+| 20 | ✅ Fixed | Version strings — aligned to `4.5.0` across app and health routes |
+
+### Previous Session Bug Fixes (v4.5.0 — 2026-07-27)
+
+| Item | Status | Description |
+|------|--------|-------------|
+| 1 | ✅ Fixed & Verified | `crawl_id` propagation — `api/__init__.py` generates UUID per crawl, passes to spider |
+| 2 | ✅ Fixed & Verified | `PLAYWRIGHT_BLOCKED_RESOURCE_TYPES` wiring — route-level abort callback blocks image/font/media/ping |
 
 ### Debug Campaign — 14-Step Fixes (from `outputs/qa_run_20260720/NEXORA_QA_REPORT.md` + `NEXORA_DEBUG_REPORT.md`)
 
@@ -46,35 +71,48 @@
 | 5 | 🟡 MEDIUM | Page-level embeddings inherited by chunks | Removed page-level embedding from `AIEnrichmentPipeline`; added per-chunk `embed_batch()` to `StructuralChunkingPipeline` | ✅ Fixed |
 | 6 | 🟢 LOW | Duplicate `NEXORA_EMBEDDING_DIM` | Removed duplicate definition in vector store section | ✅ Fixed |
 
+### Files Created (This Session)
+
+| File | Purpose |
+|------|---------|
+| `Nexora application/Crawler/nexora_crawler/api/__init__.py` | FastAPI app + CLI entrypoint (replaces old `api.py`) |
+| `Nexora application/Crawler/nexora_crawler/api/__main__.py` | `python -m nexora_crawler.api` entrypoint |
+| `Nexora application/Crawler/nexora_crawler/api/routes/__init__.py` | Route package marker |
+| `Nexora application/Crawler/nexora_crawler/api/database/__init__.py` | DB package marker |
+| `Nexora application/Crawler/nexora_crawler/api/database/connection.py` | Async DB connection (unified path to `NEXORA_METADATA_DB`) |
+| `Nexora application/Crawler/nexora_crawler/api/auth.py` | JWT + workspace isolation (env-gated dev bypass) |
+| `Nexora application/Crawler/nexora_crawler/api/routes/search.py` | Vector search endpoints |
+| `Nexora application/Crawler/nexora_crawler/api/routes/webhooks.py` | Webhook CRUD |
+| `Nexora application/Crawler/nexora_crawler/api/routes/jobs.py` | Generic job submission |
+| `Nexora application/Crawler/nexora_crawler/api/routes/gdpr.py` | GDPR erase |
+| `Nexora application/Crawler/nexora_crawler/api/routes/extract.py` | Schema-driven extraction |
+| `Nexora application/Crawler/nexora_crawler/api/routes/health.py` | Health checks |
+| `Nexora application/Crawler/nexora_crawler/jobs/__init__.py` | Jobs package marker |
+| `Nexora application/Crawler/nexora_crawler/jobs/registry.py` | Job type registry (5 built-in types) |
+| `Nexora application/Crawler/nexora_crawler/tasks/__init__.py` | Tasks package marker |
+| `Nexora application/Crawler/nexora_crawler/tasks/dispatcher.py` | Simplified job dispatcher (no Celery) |
+
+### Files Removed (This Session)
+
+| File | Reason |
+|------|--------|
+| `Nexora application/Crawler/nexora_crawler/api.py` | Replaced by `api/` package (cannot coexist) |
+
 ### Files Modified (This Session)
 
 | File | Changes |
 |------|---------|
-| `Nexora application/Crawler/nexora_crawler/api.py` | Added `import uuid`; `_run_crawl_sync` generates `crawl_id = uuid.uuid4().hex` and passes to spider |
-| `Nexora application/Crawler/nexora_crawler/middlewares/dynamic_detection.py` | Added `_blocked_resource_types` module-level variable + `_abort_blocked_resources()` callback; `__init__` syncs from settings |
-| `Nexora application/Crawler/nexora_crawler/settings.py` | Added `PLAYWRIGHT_ABORT_REQUEST` pointing to `_abort_blocked_resources` |
-
-### Files Modified (Previous Sessions — v4.4.0)
-
-| File | Changes |
-|------|---------|
-| `Nexora application/Crawler/nexora_crawler/middlewares/__init__.py` | `_INFRA_PATH_RE` robots/sitemap pass-through; `_BLOCKED_QUERY_RE` action-link blocking; dead `__skip` guards removed |
-| `Nexora application/Crawler/nexora_crawler/pipelines/__init__.py` | `DropItem` for duplicates; dead `__skip` guards removed |
-| `Nexora application/Crawler/nexora_crawler/pipelines/metadata_indexer.py` | Dead `__skip` guard removed |
-| `Nexora application/Crawler/nexora_crawler/pipelines/parquet_export.py` | Catch-all JSON-stringify for nested fields |
-| `Nexora application/Crawler/nexora_crawler/pipelines/ai_enrichment.py` | Circuit breaker + fallback provider for LLM calls |
-| `Nexora application/Crawler/nexora_crawler/pipelines/chunking_pipeline.py` | `_estimate_tokens()`, breaker-aware embedding, fallback wiring |
-| `Nexora application/Crawler/nexora_crawler/AI_Utilities/embedding_engine.py` | Circuit breaker + fallback engine |
-| `Nexora application/Crawler/nexora_crawler/settings.py` | Anchored paths, `NEXORA_AI_FAILFAST_THRESHOLD`, `NEXORA_AI_FALLBACK_*` |
-| `Nexora application/Crawler/nexora_crawler/vector_store/factory.py` | Settings-aware `_cfg()` resolver |
-| `Nexora application/Crawler/nexora_crawler/storage/local_sqlite.py` | `_limit_clause()`, limit support on all queries |
-| `Nexora application/Crawler/nexora_crawler/items.py` | Removed mangled `__skip`; declared `ai_status` |
-| `Nexora application/Crawler/enrich.py` | `ai_tags_json` deserialization, write-back preservation, `_limit_clause` usage |
-| `Nexora application/Extractor/multimodal_extractor.py` | `_descriptor_weight()`, `_safe_dimension()`, trailing-comma srcset handling |
-| `Nexora application/Crawler/nexora_crawler/spiders/nexora_spider.py` | `CloseSpider` on `max_pages` cap |
-| `Nexora application/Crawler/nexora_crawler/middlewares/exponential_backoff.py` | `IgnoreRequest` early-exit |
-| `Nexora application/Crawler/nexora_crawler/middlewares/playwright_cleanup.py` | Silenced shutdown noise |
-| `Nexora application/Crawler/nexora_crawler/sitemap_detector.py` | Pre-discovery redirect resolution |
+| `Nexora application/Crawler/nexora_crawler/storage/local_sqlite.py` | Added `workspace_id` columns; added 6 new Phase 4C tables; fixed `_migrate_schema()` ordering; fixed `insert_page()` column count |
+| `Nexora application/Crawler/nexora_crawler/spiders/nexora_spider.py` | Added `workspace_id` parameter |
+| `Nexora application/Crawler/nexora_crawler/api/__init__.py` | Subprocess spawn target fixed to `__main__.py`; CORS added; 6 routers wired; lifespan auto-migration hook added; `NEXORA_CORS_ORIGINS` wired; `NEXORA_API_WORKERS` forwarded to uvicorn; version strings aligned to `4.5.0` |
+| `Nexora application/Crawler/nexora_crawler/api/routes/jobs.py` | Added `GET /v1/jobs/{id}` status endpoint; stub handlers now raise `HTTP 501`; async tasks tracked in `_live_tasks` to prevent GC |
+| `Nexora application/Crawler/nexora_crawler/settings.py` | Added 15 Phase 4C settings |
+| `Nexora application/Crawler/nexora_crawler/vector_store/factory.py` | Added `get_vector_store()` async initializer |
+| `Nexora application/Crawler/nexora_crawler/api/routes/gdpr.py` | Fixed SQL dialect; added `await db.commit()`; moved audit log before commit |
+| `Nexora application/Crawler/nexora_crawler/api/routes/webhooks.py` | Fixed asyncpg method names; added `WebhookCreateOut` model with `secret`; added commits |
+| `Nexora application/Crawler/nexora_crawler/api/routes/extract.py` | Fixed SQL dialect; added `await db.commit()`; changed status to 200 (sync work) |
+| `Nexora application/Crawler/nexora_crawler/api/auth.py` | Gated `X-Workspace-Id` bypass behind `NEXORA_AUTH_BYPASS_ENABLED`; added startup warning for default JWT secret |
+| `Nexora application/Crawler/nexora_crawler/api/routes/search.py` | Changed to `await get_vector_store()` |
 
 ---
 
@@ -113,6 +151,29 @@
 | Direct CLI | `python -m nexora_crawler.api --url ...` | `--enrich-mode` flag |
 | Offline Enrich | `python enrich.py` | Always enriches (mode-agnostic) |
 
+### Phase 4C API Surface
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/` | GET | No | Service info + strategies |
+| `/strategies` | GET | No | List crawl strategies |
+| `/crawl` | POST | No | Start crawl (legacy, returns 200) |
+| `/crawl/{job_id}` | GET | No | Get crawl status |
+| `/jobs` | GET | No | List all crawl jobs |
+| `/v1/search/semantic` | POST | Yes | Pure vector similarity |
+| `/v1/search/hybrid` | POST | Yes | Vector + BM25 (Chroma degrades to vector-only) |
+| `/v1/search/by-source/{source_type}/{source_id}/similar` | POST | Yes | Find similar records |
+| `/v1/webhooks` | POST | Yes | Create webhook (secret returned once) |
+| `/v1/webhooks` | GET | Yes | List workspace webhooks |
+| `/v1/webhooks/{webhook_id}` | DELETE | Yes | Delete webhook |
+| `/v1/jobs` | POST | Yes | Submit generic job (stub handlers return 501) |
+| `/v1/jobs/{id}` | GET | Yes | Poll job status and result |
+| `/v1/jobs/types` | GET | No | List registered job types |
+| `/v1/gdpr/erase` | DELETE | Yes | GDPR Article 17 — right to erasure |
+| `/v1/extract/schema` | POST | Yes | Schema-driven extraction |
+| `/health` | GET | No | Health check |
+| `/health/detailed` | GET | No | Detailed health + uptime |
+
 ---
 
 ## Key Configuration
@@ -132,6 +193,11 @@
 | `NEXORA_AI_FALLBACK_MODEL` | `""` | Secondary provider model |
 | `NEXORA_AI_FALLBACK_BASE_URL` | `""` | Secondary provider base URL |
 | `NEXORA_AI_FALLBACK_API_KEY` | `""` | Secondary provider API key |
+| `NEXORA_AUTH_BYPASS_ENABLED` | `false` | Enable `X-Workspace-Id` dev bypass (default: off in production) |
+| `NEXORA_JWT_SECRET_KEY` | `change-me-in-production` | JWT signing secret — **must be changed in production** |
+| `NEXORA_API_HOST` | `0.0.0.0` | API server bind host |
+| `NEXORA_API_PORT` | `8000` | API server bind port |
+| `NEXORA_CORS_ORIGINS` | `["http://localhost:3000", "http://localhost:1420"]` | Allowed CORS origins |
 
 ---
 
@@ -144,30 +210,40 @@
 1. **Live re-validation matrix** — Re-run the full 10-test QA matrix with current fixes: Tests 07/08 full-scale (500/1000 pages), Test 06 with working AI provider, Test 02 with new fixture, Test 09/11 with Playwright active.
 2. **Phase 3/4A regression suite** — Run existing tests under `tests/` (requires scrapy installed in active env).
 3. **Verify provider fallback end-to-end** — Confirm that when HF quota is exhausted, fallback provider (e.g. Ollama) takes over automatically and embeddings/summaries succeed.
+4. **Write Phase 4C tests** — Minimum useful set: migration against populated DB, write-then-read per route, unauthenticated request expecting 401, job submission asserting real work.
 
 ### 🟢 Nice to Have
 
-4. **Chunk size tuning** — Overlap mechanism may still push chunks slightly above target. Consider adding `tiktoken` for accurate token counting.
-5. **Background enrichment runner** — Scheduled/cron job for `enrich` (Celery/RQ/async task).
-6. **Anti-bot live validation** — Run Test 09/Step 11 command against scrapingcourse.com with Playwright active to confirm graceful behavior.
+5. **Implement real job handlers** — All 5 registered job types are stubs (`handler_cls=None`). Either attach real handlers or return HTTP 501.
+6. **Phase 4C auth issuance endpoints** — Add `/auth/token`, `/auth/refresh`, `/auth/api-keys` if login flow is needed.
+7. **Rate limiting** — Install `slowapi` and wire `Limiter` to app state.
+8. **Structured logging middleware** — Implement `api/middleware/logging.py` and wire it.
+9. **CLI/SDK** — Implement `cli/main.py` with `--api` mode and `sdk/client.py`.
+10. **Chunk size tuning** — Overlap mechanism may still push chunks slightly above target. Consider adding `tiktoken` for accurate token counting.
+11. **Background enrichment runner** — Scheduled/cron job for `enrich` (Celery/RQ/async task).
+12. **Anti-bot live validation** — Run Test 09/Step 11 command against scrapingcourse.com with Playwright active to confirm graceful behavior.
 
 ---
 
 ## Companion Documents
 
 | Document | Location | Status |
-|----------|----------|--------|
+| :--- | :--- | :--- |
+| Release Notes v4.6.0 | `Nexora application/application documents/release_notes_v4.6.0.md` | Current |
 | Release Notes v4.5.0 | `Nexora application/application documents/release_notes_v4.5.0.md` | Current |
 | Release Notes v4.4.0 | `Nexora application/application documents/release_notes_v4.4.0.md` | Current |
+| Phase 4C Integration Progress | `Nexora application/application documents/phase_4c_integration_progress.md` | Current |
+| Phase 4C Verification Report | `Nexora application/application documents/phase_4c_verification_report.md` | Current |
+| Phase 4C Gap Analysis (Pre) | `Nexora application/application documents/phase_4c_gap_analysis.md` | Current |
+| Phase 4C Post-Implementation Report | `phase_4c_gap_analysis.md` | Current |
 | QA Report | `outputs/qa_run_20260720/NEXORA_QA_REPORT.md` | Current |
 | Debug Campaign | `outputs/qa_run_20260720/NEXORA_DEBUG_REPORT.md` | Current (14 steps) |
 | Open Items (Original) | `outputs/qa_run_20260720/NEXORA_OPEN_ITEMS_NEXT_SESSION.md` | Resolved |
 | Debug Round 2 Fixes Applied | `outputs/qa_run_20260720/NEXORA_DEBUG_ROUND2_FIXES_APPLIED.md` | Current |
 | Bug Inventory | `outputs/audit/NEXORA_BUGS_PRIORITIZED.md` | All items fixed |
 | On-Demand Rework Summary | `NEXORA_ONDEMAND_REWORK_SUMMARY.md` | Needs minor update for fallback |
-| Repository Structure | `REPOSITORY_STRUCTURE.md` | Current (v4.5.0) |
-| README | `README.md` | Current (v4.5.0) |
-| Phase 4B Docs | `Project Tools/Phase 4 Documentation/Phase_4B.md` | Current |
+| Repository Structure | `REPOSITORY_STRUCTURE.md` | Current (v4.6.0) |
+| README | `README.md` | Current (v4.6.0) |
 | Model/Provider Switch Guide | `Project Tools/switch_model_guide.md` | Current |
 
 ---
@@ -176,16 +252,11 @@
 
 ### To verify fixes work:
 ```powershell
-# Syntax check (already done — all pass)
-python -m py_compile Nexora\application\Crawler\nexora_crawler\middlewares\__init__.py
-python -m py_compile Nexora\application\Crawler\nexora_crawler\pipelines\__init__.py
-python -m py_compile Nexora\application\Crawler\nexora_crawler\pipelines\metadata_indexer.py
-python -m py_compile Nexora\application\Crawler\nexora_crawler\pipelines\parquet_export.py
-python -m py_compile Nexora\application\Crawler\nexora_crawler\pipelines\ai_enrichment.py
-python -m py_compile Nexora\application\Crawler\nexora_crawler\pipelines\chunking_pipeline.py
-python -m py_compile Nexora\application\Crawler\nexora_crawler\AI_Utilities\embedding_engine.py
-python -m py_compile Nexora\application\Crawler\nexora_crawler\settings.py
-python -m py_compile Nexora\application\Crawler\enrich.py
+# Syntax check
+python -m py_compile Nexora\application\Crawler\nexora_crawler\storage\local_sqlite.py
+python -m py_compile Nexora\application\Crawler\nexora_crawler\api\__init__.py
+python -m py_compile Nexora\application\Crawler\nexora_crawler\api\auth.py
+python -m py_compile Nexora\application\Crawler\nexora_crawler\api\routes\*.py
 
 # Test enrich.py (requires a populated DB)
 cd Nexora\application\Crawler
@@ -200,6 +271,9 @@ scrapy crawl nexora -a urls="https://example.com" -a strategy="single-page"
 
 # Run API server
 python -m nexora_crawler.api --server
+
+# Verify workspace_id migration on live DB
+python -c "import sqlite3; c = sqlite3.connect('nexora_crawler/data/nexora_metadata.db'); print([r[1] for r in c.execute('PRAGMA table_info(pages)')]); print('workspace_id:', 'workspace_id' in [r[1] for r in c.execute('PRAGMA table_info(pages)').fetchall()])"
 ```
 
 ### To run the full QA re-validation:
@@ -229,8 +303,30 @@ python -m nexora_crawler.api --url https://quotes.toscrape.com/js/ --strategy si
 # Check logs for: blocked images/fonts/media/ping
 ```
 
+### To test Phase 4C endpoints:
+```powershell
+# Start API server
+python -m nexora_crawler.api --server
+
+# In another terminal:
+# Health check
+curl http://localhost:8000/health
+
+# List job types
+curl http://localhost:8000/v1/jobs/types
+
+# Search (with dev bypass header)
+curl -X POST http://localhost:8000/v1/search/semantic -H "Content-Type: application/json" -H "X-Workspace-Id: test" -d "{\"query\": \"test\", \"top_k\": 5}"
+
+# Create webhook
+curl -X POST http://localhost:8000/v1/webhooks -H "Content-Type: application/json" -H "X-Workspace-Id: test" -d "{\"url\": \"https://example.com/hook\", \"event_types\": [\"job.completed\"]}"
+
+# GDPR erase (DANGEROUS — only on test DB)
+curl -X DELETE http://localhost:8000/v1/gdpr/erase -H "X-Workspace-Id: test"
+```
+
 ### To update docs:
-- `release_notes_v4.5.0.md` — newly created
-- `README.md` — updated to v4.5.0
-- `REPOSITORY_STRUCTURE.md` — updated to v4.5.0
-- `NEXORA_ONDEMAND_REWORK_SUMMARY.md` — add fallback provider section if needed
+- `release_notes_v4.6.0.md` — current
+- `README.md` — current (v4.6.0)
+- `REPOSITORY_STRUCTURE.md` — current (v4.6.0)
+- `NEXORA_SESSION_HANDOFF.md` — this file (updated)

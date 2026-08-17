@@ -327,4 +327,29 @@ NEXORA_AI_FALLBACK_API_KEY = os.getenv("NEXORA_AI_FALLBACK_API_KEY", "")
 NEXORA_CHUNK_SIZE = 512 # Target tokens per chunk 
 NEXORA_CHUNK_OVERLAP = 128 #overlap tokens btwn chunks
 
+# ── Phase 4C: API Server Settings ─────────────────────────────────────────
+NEXORA_API_HOST = os.getenv("NEXORA_API_HOST", "0.0.0.0")
+NEXORA_API_PORT = int(os.getenv("NEXORA_API_PORT", "8000"))
+NEXORA_API_WORKERS = int(os.getenv("NEXORA_API_WORKERS", "4"))
+NEXORA_API_LOG_LEVEL = os.getenv("NEXORA_API_LOG_LEVEL", "info")
+
+# ── Phase 4C: Authentication Settings ─────────────────────────────────────
+NEXORA_JWT_SECRET_KEY = os.getenv("NEXORA_JWT_SECRET_KEY", "change-me-in-production")
+NEXORA_JWT_ALGORITHM = os.getenv("NEXORA_JWT_ALGORITHM", "HS256")
+NEXORA_JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("NEXORA_JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+NEXORA_JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("NEXORA_JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+NEXORA_API_KEY_LENGTH = int(os.getenv("NEXORA_API_KEY_LENGTH", "32"))
+
+# ── Phase 4C: Rate Limiting Settings ──────────────────────────────────────
+NEXORA_RATE_LIMIT_DEFAULT = os.getenv("NEXORA_RATE_LIMIT_DEFAULT", "60")
+NEXORA_RATE_LIMIT_BURST = os.getenv("NEXORA_RATE_LIMIT_BURST", "10")
+
+# ── Phase 4C: CORS Settings ───────────────────────────────────────────────
+NEXORA_CORS_ORIGINS = os.getenv("NEXORA_CORS_ORIGINS", '["http://localhost:3000", "http://localhost:1420"]')
+
+# ── Phase 4C: Logging Settings ────────────────────────────────────────────
+NEXORA_LOG_FORMAT = os.getenv("NEXORA_LOG_FORMAT", "json")
+NEXORA_LOG_LEVEL = os.getenv("NEXORA_LOG_LEVEL", "info")
+NEXORA_STRUCTURED_LOGS = os.getenv("NEXORA_STRUCTURED_LOGS", "true").lower() in ("1", "true", "yes")
+
 

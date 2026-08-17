@@ -102,6 +102,7 @@ class NexoraSpider(scrapy.Spider):
         strategy: str = "",     # NEW: user-friendly strategy name
         max_pages: int = 1000,  # NEW: safety cap
         crawl_id: str = "",
+        workspace_id: str = "default",
         *args,
         **kwargs,
     ):
@@ -112,6 +113,7 @@ class NexoraSpider(scrapy.Spider):
         self.raw_strategy = strategy.strip().lower()
         self.max_pages = int(max_pages)
         self.crawl_id = crawl_id
+        self.workspace_id = workspace_id
         self.pages_crawled = 0
 
         # Resolve strategy

@@ -29,3 +29,17 @@ chromadb>=0.5.0
 # requests==2.32.3 (declared above) — used by UnifiedEmbeddingEngine HF legacy endpoint
 # Optional: huggingface_hub — used by pipelines/test_ai_direct_hf.py
 # huggingface_hub>=0.24.0
+
+# Phase 4C: API server, auth, database, async runtime
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.7.0
+PyJWT>=2.8.0
+aiosqlite>=0.20.0
+asyncpg>=0.30.0
+bcrypt>=4.1.0
+slowapi>=0.1.9
+python-multipart>=0.0.9
+
+# Phase 4C: Playwright fix — >=0.0.48 required for PLAYWRIGHT_ABORT_REQUEST routing
+scrapy-playwright>=0.0.48

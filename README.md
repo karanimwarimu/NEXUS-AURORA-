@@ -5,7 +5,7 @@
 [![Version](https://img.shields.io/badge/version-4.5.0-blue)]()
 [![Python](https://img.shields.io/badge/python-3.11+-green)]()
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
-[![Status](https://img.shields.io/badge/status-phase%204B%20tested-brightgreen)]()
+[![Status](https://img.shields.io/badge/status-phase%204C%20hardened-brightgreen)]()
 
 ---
 
@@ -43,11 +43,21 @@
 
 On top of the Phase 4A storage engine, **v4.3.0 completes Phase 4B verification**: per-page AI summarization and tagging, sentence-transformers embeddings via the Hugging Face router, structural chunking, and vector indexing into Chroma (local) or pgvector/Supabase (production) — all behind a provider-agnostic interface. **Crawl and enrichment are now decoupled:** by default (`on_demand` mode), crawls are fast with no AI calls. AI enrichment runs later via the offline `enrich.py` command or inline via `eager` mode.
 
-> **Current Phase: 4B (v4.5.0)** — 14-step debug campaign complete (v4.4.0). All P0/P1 runtime bugs fixed and verified. Provider fallback architecture added. Open items from Debug Round 2 (crawl_id propagation + Playwright resource blocking) resolved and verified.
+> **Current Phase: 4C (v4.6.0)** — Phase 4C infrastructure integrated, hardened, and verified. All S1/S2 defects from independent gap analysis resolved. Database migration safety, transaction durability, tenant isolation, vector store initialization, job semantics, and dependency declarations complete.
 
 ---
 
-## What's New in v4.5.0
+## What's New in v4.6.0
+
+| Feature | Description |
+|---------|-------------|
+| **Phase 4C infrastructure hardened** | Database migration order fixed (workspace_id backfill runs before DDL); lifespan auto-migration hook added; all async route writes now durable with explicit `await db.commit()`. |
+| **Tenant isolation enforced** | JWT validation now evaluated before `X-Workspace-Id` dev bypass; bypass gated behind `NEXORA_AUTH_BYPASS_ENABLED=false` by default; startup warning on default `JWT_SECRET`. |
+| **Job execution semantics fixed** | Stub handlers now return `HTTP 501 Not Implemented`; added `GET /v1/jobs/{job_id}` status endpoint; async tasks tracked to prevent GC. |
+| **Dead settings wired** | `NEXORA_CORS_ORIGINS` parsed from env and passed to CORS middleware; `NEXORA_API_WORKERS` forwarded to `uvicorn.run()`; version strings aligned to `4.5.0`. |
+| **Dependencies declared** | Added fastapi, uvicorn, pydantic, PyJWT, aiosqlite, asyncpg, bcrypt, slowapi, python-multipart to `requirements.txt`; pinned `scrapy-playwright>=0.0.48`. |
+
+### v4.5.0 (Previous Release)
 
 | Feature | Description |
 |---------|-------------|
@@ -128,6 +138,20 @@ On top of the Phase 4A storage engine, **v4.3.0 completes Phase 4B verification*
 - **Parquet export** — Columnar, compressed storage for ML pipelines (snappy compression, < 30% of equivalent JSON)
 - **One crawl → multiple formats** — Markdown + JSON + CSV + Parquet + SQLite from a single pass
 
+### Phase 4C — API Layer & Multi-Tenancy
+- **FastAPI REST server** — `python -m nexora_crawler.api --server` with 21 routes (legacy + Phase 4C)
+- **JWT authentication** — `X-Workspace-Id` dev bypass gated by `NEXORA_AUTH_BYPASS_ENABLED=false` by default
+- **Vector search** — `/v1/search/semantic`, `/v1/search/hybrid`, `/v1/search/by-source/{source_type}/{source_id}/similar`
+- **Webhooks** — CRUD endpoints with secret management at `/v1/webhooks`
+- **Generic job submission** — `/v1/jobs` with status polling at `/v1/jobs/{id}`
+- **GDPR compliance** — `DELETE /v1/gdpr/erase` (Article 17 right to erasure)
+- **Schema-driven extraction** — `POST /v1/extract/schema` for Firecrawl-style structured extraction
+- **Health checks** — `/health` and `/health/detailed`
+- **Workspace isolation** — `workspace_id` column on all tables; 429 existing rows backfilled to `'default'`
+- **6 new tables** — `webhooks`, `webhook_deliveries`, `workspace_quotas`, `usage_records`, `audit_logs`, `extraction_schemas`
+- **Async DB layer** — `aiosqlite` (dev) / `asyncpg` (prod) with unified `NEXORA_METADATA_DB` path
+- **CORS middleware** — Origins configurable via `NEXORA_CORS_ORIGINS`
+
 ### Phase 4B — AI Enrichment & Vector Indexing
 - **On-demand enrichment** — Crawl is decoupled from AI. Default `on_demand` mode saves cleaned markdown only. Run `enrich.py` later to generate summaries, tags, and vectors.
 - **AI summary + tags** — LLM-generated per page (LiteLLM against the HF router)
@@ -147,53 +171,68 @@ On top of the Phase 4A storage engine, **v4.3.0 completes Phase 4B verification*
 ### Complete Pipeline Chain
 
 ```
-                         ┌─────────────────┐
-                         │  Incoming URL    │
-                         └────────┬────────┘
-                                  │
-                                  ▼
-               ┌──────────────────────────────────────┐
-               │      DYNAMIC DETECTION MIDDLEWARE    │
-               │      (Priority 542 — Phase 3)        │
-               │      Static HTTP or Playwright?      │
-               └──────────────────┬───────────────────┘
-                                  │
-                                  ▼
-               ┌──────────────────────────────────────┐
-               │      EXTRACTION PIPELINE (100)       │
-               │      BS4 + Trafilatura + Style       │
-               └──────────────────┬───────────────────┘
-                                  │
-                                  ▼
-               ┌──────────────────────────────────────┐
-               │  ┌──────────────────────────────────┐ │
-               │  │ PHASE 4A — STORAGE ENGINE        │ │
-               │  │ [110] → MarkdownExtraction       │ │
-               │  │ [150] → NexoraStylePipeline      │ │
-               │  │ [160] → UnifiedSchemaEnricher    │ │
-               │  │ [165] → MetadataIndexerPipeline  │ │
-               │  └──────────────────────────────────┘ │
-               │  ┌──────────────────────────────────┐ │
-               │  │ PHASE 4B — AI ENRICHMENT         │ │
-               │  │ [250] → AIEnrichmentPipeline     │ │  summary + tags + embedding
-               │  │ [260] → StructuralChunkingPipeline│ │  Markdown → chunks
-               │  │ [270] → VectorIndexPipeline       │ │  chunks → vector store
-               │  └──────────────────────────────────┘ │
-               │  [450] → ParquetExportPipeline       │
-               └──────────────────┬───────────────────┘
-                                  │
-                                  ▼
-               ┌──────────────────────────────────────┐
-               │      EXPORT LAYER                    │
-               │  [500] → JSON + CSV per page         │
-               │  [600] → Master dataset CSV          │
-               └──────────────────────────────────────┘
-                                  │
-                                  ▼
-            ┌────────────┬────────────┬────────────┬────────────┐
-            ▼            ▼            ▼            ▼            ▼
-         Markdown    JSON/CSV    Parquet      SQLite      Vector Store
-         (LLM)      (Inspect)   (ML/BI)     (Metadata)   (Chroma/pgvector)
+                          ┌─────────────────┐
+                          │  Incoming URL    │
+                          └────────┬────────┘
+                                   │
+                                   ▼
+                ┌──────────────────────────────────────┐
+                │      DYNAMIC DETECTION MIDDLEWARE    │
+                │      (Priority 542 — Phase 3)        │
+                │      Static HTTP or Playwright?      │
+                └──────────────────┬───────────────────┘
+                                   │
+                                   ▼
+                ┌──────────────────────────────────────┐
+                │      EXTRACTION PIPELINE (100)       │
+                │      BS4 + Trafilatura + Style       │
+                └──────────────────┬───────────────────┘
+                                   │
+                                   ▼
+                ┌──────────────────────────────────────┐
+                │  ┌──────────────────────────────────┐ │
+                │  │ PHASE 4A — STORAGE ENGINE        │ │
+                │  │ [110] → MarkdownExtraction       │ │
+                │  │ [150] → NexoraStylePipeline      │ │
+                │  │ [160] → UnifiedSchemaEnricher    │ │
+                │  │ [165] → MetadataIndexerPipeline  │ │
+                │  └──────────────────────────────────┘ │
+                │  ┌──────────────────────────────────┐ │
+                │  │ PHASE 4B — AI ENRICHMENT         │ │
+                │  │ [250] → AIEnrichmentPipeline     │ │  summary + tags + embedding
+                │  │ [260] → StructuralChunkingPipeline│ │  Markdown → chunks
+                │  │ [270] → VectorIndexPipeline       │ │  chunks → vector store
+                │  └──────────────────────────────────┘ │
+                │  [450] → ParquetExportPipeline       │
+                └──────────────────┬───────────────────┘
+                                   │
+                                   ▼
+                ┌──────────────────────────────────────┐
+                │      EXPORT LAYER                    │
+                │  [500] → JSON + CSV per page         │
+                │  [600] → Master dataset CSV          │
+                └──────────────────────────────────────┘
+                                   │
+                                   ▼
+             ┌────────────┬────────────┬────────────┬────────────┐
+             ▼            ▼            ▼            ▼            ▼
+          Markdown    JSON/CSV    Parquet      SQLite      Vector Store
+          (LLM)      (Inspect)   (ML/BI)     (Metadata)   (Chroma/pgvector)
+
+### Phase 4C — API Surface
+
+```
+                          ┌─────────────────┐
+                          │  FastAPI Server │
+                          └────────┬────────┘
+                                   │
+          ┌────────────┬────────────┼────────────┬────────────┐
+          ▼            ▼            ▼            ▼            ▼
+       /health    /v1/search    /v1/webhooks   /v1/jobs   /v1/gdpr
+       /strategies  /semantic   /{id}          /types     /erase
+                    /hybrid      POST/GET/DELETE  POST     /extract
+                    /by-source   ...                      /schema
+                    /similar
 ```
 
 ### 8-Signal Decision Tree
@@ -244,8 +283,9 @@ NEXUS AURORA/
 ├── REPOSITORY_STRUCTURE.md
 ├── Nexora application/                     ← Main application source
 │   ├── application documents/
-│   │   └── requirements.txt
-│   ├── Crawler/                            Scrapy project with Phases 1-4B
+│   │   ├── requirements.txt
+│   │   └── release_notes_v4.6.0.md         ★ Phase 4C remediation
+│   ├── Crawler/                            Scrapy project with Phases 1-4C
 │   │   └── nexora_crawler/
 │   │       ├── AI_Utilities/
 │   │       │   └── embedding_engine.py          ★ Phase 4B: provider-aware embeddings
@@ -270,14 +310,37 @@ NEXUS AURORA/
 │   │       │   ├── base.py                       BaseVectorStore + VectorRecord/SearchQuery
 │   │       │   ├── chroma_store.py               ChromaDB backend (local dev)
 │   │       │   ├── pgvector_store.py             pgvector backend (Supabase/Postgres)
-│   │       │   └── factory.py                   build_vector_store()
+│   │       │   └── factory.py                   build_vector_store() + async singleton
 │   │       ├── storage/                          ★ Phase 4A storage layer
 │   │       │   ├── base.py                       Abstract interfaces
 │   │       │   ├── models.py                     Unified schema dataclass
-│   │       │   └── local_sqlite.py               SQLite implementation
+│   │       │   └── local_sqlite.py               SQLite implementation + Phase 4C tables
 │   │       ├── spiders/
 │   │       │   └── nexora_spider.py
-│   │       ├── api.py                 FastAPI + interactive CLI
+│   │       ├── api/                              ★ Phase 4C: FastAPI package
+│   │       │   ├── __init__.py                   FastAPI app + CLI entrypoint
+│   │       │   ├── __main__.py                   `python -m nexora_crawler.api`
+│   │       │   ├── auth.py                       JWT + workspace isolation
+│   │       │   ├── database/
+│   │       │   │   ├── __init__.py
+│   │       │   │   └── connection.py             Async DB (aiosqlite / asyncpg)
+│   │       │   └── routes/
+│   │       │       ├── __init__.py
+│   │       │       ├── search.py                 Vector search endpoints
+│   │       │       ├── webhooks.py               Webhook CRUD
+│   │       │       ├── jobs.py                   Generic job submission + status
+│   │       │       ├── gdpr.py                   GDPR erase
+│   │       │       ├── extract.py                Schema-driven extraction
+│   │       │       └── health.py                 Health checks
+│   │       ├── jobs/                             ★ Phase 4C: job registry
+│   │       │   ├── __init__.py
+│   │       │   └── registry.py                   5 built-in job types
+│   │       ├── tasks/                            ★ Phase 4C: simplified dispatcher
+│   │       │   ├── __init__.py
+│   │       │   └── dispatcher.py                 In-process job dispatch (no Celery)
+│   │       ├── items.py               Updated with Phase 4A/4B fields
+│   │       ├── settings.py            Updated with Phase 4A/4B/4C priorities
+│   │       └── sitemap_detector.py
 │   │       ├── items.py               Updated with Phase 4A/4B fields
 │   │       ├── settings.py            Updated with Phase 4A/4B priorities
 │   │       └── sitemap_detector.py
@@ -559,17 +622,29 @@ All three are **settings-only changes** — no code changes required. See [`Proj
 | **3** | ✅ Complete (3.4) | DynamicDetectionMiddleware with 8-signal engine, 85-90% accuracy |
 | **4A** | ✅ Complete (v4.1.0) | Storage & Multi-Format Ingestion Engine |
 | **4B** | ✅ Complete + Tested (v4.5.0) | AI enrichment, embeddings, chunking, vector indexing. 14-step debug campaign (Steps 1–14) fixed all P0/P1 runtime bugs. Provider fallback added. Open items (crawl_id + resource blocking) resolved and verified. |
+| **4C** | ✅ Complete + Hardened (v4.6.0) | API layer, JWT auth, workspace isolation, webhooks, jobs, GDPR, schema extraction. All S1/S2 defects from independent gap analysis resolved. |
 | **5** | 📋 Planned | Distributed crawling, shared profile cache |
 | **6** | 📋 Planned | Tauri desktop application |
 | **7** | 📋 Planned | Hybrid search, list_all for migration tooling |
 
 ---
 
-## Known Limitations (v4.5.0)
+## Known Limitations (v4.6.0)
 
+- **Phase 4C test suite** — No `test_phase4c*.py` exists yet. Minimum useful set: migration against populated DB, write-then-read per route, unauthenticated 401, job submission asserting real work.
+- **Job handler implementations** — All 5 registered job types return 501. Real `handler_cls` implementations pending.
 - **Full re-validation matrix not yet re-run** — Tests 06/07/08 need full-scale re-runs with working AI provider + Playwright active (deferred per operator).
-- **Step 11/12/13/14 live validation pending** — unit checks and code changes done; live crawl verification blocked on environment readiness (Playwright chromium, HF quota/top-up or local Ollama).
 - **Chunk size overshoot** — avg ≈ 680 tokens/chunk vs 512 target (overlap-driven; tracked as nice-to-have).
+
+### Resolved in v4.6.0
+
+- ~~Database migration crash on pre-existing DBs~~ — `_migrate_schema()` hoisted before DDL; lifespan auto-migration hook added.
+- ~~All Phase 4C writes rolled back silently~~ — Explicit `await db.commit()` added to all mutating async routes.
+- ~~Tenant isolation bypass via unauthenticated X-Workspace-Id~~ — JWT-first auth; dev bypass gated behind `NEXORA_AUTH_BYPASS_ENABLED=false`.
+- ~~Vector store HTTP 500 on search/GDPR routes~~ — All routes use `await get_vector_store()` async singleton.
+- ~~Subprocess spawns referenced deleted api.py~~ — Both paths now spawn `python -m nexora_crawler.api`.
+- ~~Job stubs returned fake "completed" status~~ — Stubs return HTTP 501; `GET /v1/jobs/{id}` added; async tasks tracked.
+- ~~Dead settings (CORS origins, API workers, version strings)~~ — Wired to env/config.
 
 ### Resolved in v4.5.0
 
@@ -611,5 +686,5 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <strong>NEXUS AURORA v4.5.0</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
+  <strong>NEXUS AURORA v4.6.0</strong> — Intelligent website intelligence for ML, RAG, and competitive analysis.
 </p>

@@ -1,6 +1,6 @@
 # Repository Structure
 
-> NEXUS AURORA v4.5.0 — reflects the current state including debug campaign fixes (Steps 1–14), provider fallback architecture, action-link crawl hygiene, crawl_id propagation, and Playwright resource blocking.
+> NEXUS AURORA v4.6.0 — reflects the current state including debug campaign fixes (Steps 1–14), provider fallback architecture, action-link crawl hygiene, crawl_id propagation, Playwright resource blocking, and Phase 4C infrastructure hardening.
 
 ```text
 .
@@ -9,20 +9,41 @@
 ├── README.md
 ├── REPOSITORY_STRUCTURE.md
 ├── release_notes_v4.4.0.md                              ★ v4.4.0 release notes
-├── release_notes_v4.5.0.md                              ★ new: v4.5.0 release notes
+├── release_notes_v4.5.0.md                              ★ v4.5.0 release notes
+├── release_notes_v4.6.0.md                              ★ new: v4.6.0 release notes
 ├── Nexora application/
 │   ├── application documents/
 │   │   ├── requirements.txt
-│   │   └── release_notes_v4.5.0.md                      ★ v4.5.0 release notes
+│   │   └── release_notes_v4.6.0.md                      ★ v4.6.0 release notes
 │   ├── Crawler/
 │   │   ├── __init__.py
 │   │   ├── scrapy.cfg
 │   │   ├── enrich.py                                    ★ offline on-demand enrichment CLI
 │   │   ├── nexora_crawler/
 │   │   │   ├── .env                                     ← secrets + Phase 4B toggles (synced to settings.py)
-│   │   │   ├── api.py                                   ← FastAPI + interactive CLI + enrich_mode wiring + crawl_id generation
+│   │   │   ├── api/                                     ← FastAPI package (replaces old api.py)
+│   │   │   │   ├── __init__.py                          FastAPI app + CLI entrypoint
+│   │   │   │   ├── __main__.py                          `python -m nexora_crawler.api`
+│   │   │   │   ├── auth.py                              JWT + workspace isolation
+│   │   │   │   ├── database/
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   └── connection.py                    Async DB (aiosqlite / asyncpg)
+│   │   │   │   └── routes/
+│   │   │   │       ├── __init__.py
+│   │   │   │       ├── search.py                        Vector search endpoints
+│   │   │   │       ├── webhooks.py                      Webhook CRUD
+│   │   │   │       ├── jobs.py                          Generic job submission + status
+│   │   │   │       ├── gdpr.py                          GDPR erase
+│   │   │   │       ├── extract.py                       Schema-driven extraction
+│   │   │   │       └── health.py                        Health checks
+│   │   │   ├── jobs/                                     Job type registry
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── registry.py                          5 built-in types
+│   │   │   ├── tasks/                                    Simplified job dispatcher
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── dispatcher.py                        In-process dispatch (no Celery)
 │   │   │   ├── items.py                                 ← Phase 4A/4B item fields (incl. vector_backend)
-│   │   │   ├── settings.py                              ← pipeline chain (100→600) + 4B config + NEXORA_ENRICH_MODE + PLAYWRIGHT_ABORT_REQUEST
+│   │   │   ├── settings.py                              ← pipeline chain (100→600) + 4B/4C config
 │   │   │   ├── sitemap_detector.py
 │   │   │   ├── spiders/
 │   │   │   │   └── nexora_spider.py
@@ -50,7 +71,7 @@
 │   │   │       ├── base.py                              ← BaseVectorStore + VectorRecord/SearchQuery/SearchResult
 │   │   │       ├── chroma_store.py                      ← ChromaDB backend (local dev)
 │   │   │       ├── pgvector_store.py                    ← pgvector backend (Supabase/Postgres)
-│   │   │       └── factory.py                           ← build_vector_store()
+│   │   │       └── factory.py                           ← build_vector_store() + async singleton
 │   │   └── Extractor/
 │   │       ├── multimodal_extractor.py                  ← Phase 4A: image/video asset extraction
 │   │       └── ... (Beautifulsoup/Trafilatura/parser/etc.)
@@ -84,7 +105,7 @@
 │   └── release_notes_v4.4.0.md                          ★ v4.4.0 release notes
 ├── data/
 │   ├── test_profiles.db                                 ← SQLite site profile cache
-│   ├── nexora_metadata.db                               ← Phase 4A: SQLite metadata store (auto-created)
+│   ├── nexora_metadata.db                               ← Phase 4A/4C: SQLite metadata store (9 tables)
 │   └── chroma/                                          ← Phase 4B: vector store (auto-created; chroma.sqlite3 + segments)
 └── Project Tools/
     ├── switch_model_guide.md                            ← Phase 4B: model/provider/backend switch guide
@@ -123,15 +144,30 @@
 - **`Crawler/nexora_crawler/pipelines/ai_enrichment.py`** — `AIEnrichmentPipeline` (250): LLM summary + tags. Circuit breaker skips remaining pages after N consecutive failures; fallback provider retries LLM calls when breaker opens. Includes `_truncate_text()` for clean prompt boundaries.
 - **`Crawler/nexora_crawler/pipelines/chunking_pipeline.py`** — `StructuralChunkingPipeline` (260): Markdown → `NexoraChunk` (~512 tokens), per-chunk `embed_batch()` embeddings (replaces inherited page-level embedding). `_estimate_tokens()` single source of truth, always `int`.
 - **`Crawler/nexora_crawler/pipelines/vector_index_pipeline.py`** — `VectorIndexPipeline` (270): `NexoraChunk` → `VectorRecord` → `BaseVectorStore`.
-- **`Crawler/nexora_crawler/vector_store/`** — `base.py` (`BaseVectorStore` contract), `chroma_store.py` (local), `pgvector_store.py` (Supabase/Postgres), `factory.py` (`build_vector_store` with settings-aware `_cfg()` resolver).
+- **`Crawler/nexora_crawler/vector_store/`** — `base.py` (`BaseVectorStore` contract), `chroma_store.py` (local), `pgvector_store.py` (Supabase/Postgres), `factory.py` (`build_vector_store` with settings-aware `_cfg()` resolver + async singleton `get_vector_store()`).
 - **`data/chroma/`** — Auto-created Chroma persistence (verified: 124 records indexed in a live run).
 - **`Crawler/nexora_crawler/pipelines/test_ai.py`** / **`test_ai_direct_hf.py`** — connectivity probes.
 - **`Crawler/nexora_crawler/pipelines/test_vector_store.py`** — proves embeddings are stored in and retrieveable from Chroma (health, count, sample records, round-trip search).
 - **`Project Tools/switch_model_guide.md`** — change model/provider/backend via settings only.
 
+### Phase 4C — API Layer & Multi-Tenancy ✅ (v4.6.0)
+- **`Crawler/nexora_crawler/api/__init__.py`** — FastAPI app (v4.5.0), lifespan auto-migration hook, CORS from `NEXORA_CORS_ORIGINS`, `NEXORA_API_WORKERS` wired to uvicorn.
+- **`Crawler/nexora_crawler/api/__main__.py`** — `python -m nexora_crawler.api` entrypoint.
+- **`Crawler/nexora_crawler/api/auth.py`** — JWT verification with env-gated dev bypass (`NEXORA_AUTH_BYPASS_ENABLED=false`); startup warning on default secret.
+- **`Crawler/nexora_crawler/api/database/connection.py`** — Async connection singleton (`aiosqlite` dev / `asyncpg` prod) pointing to unified `NEXORA_METADATA_DB`.
+- **`Crawler/nexora_crawler/api/routes/search.py`** — Vector search (`/v1/search/semantic`, `/v1/search/hybrid`, `/v1/search/by-source/{source_type}/{source_id}/similar`).
+- **`Crawler/nexora_crawler/api/routes/webhooks.py`** — Webhook CRUD with secret returned once on create.
+- **`Crawler/nexora_crawler/api/routes/jobs.py`** — Generic job submission (`POST /v1/jobs`) with status polling (`GET /v1/jobs/{id}`); stub handlers return 501.
+- **`Crawler/nexora_crawler/api/routes/gdpr.py`** — GDPR Article 17 right-to-erasure endpoint.
+- **`Crawler/nexora_crawler/api/routes/extract.py`** — Schema-driven extraction endpoint.
+- **`Crawler/nexora_crawler/api/routes/health.py`** — Liveness (`/health`) and readiness (`/health/detailed`) endpoints.
+- **`Crawler/nexora_crawler/jobs/registry.py`** — `JobTypeRegistry` with 5 built-in types (`crawl`, `schema_extract`, `index_search`, `index_add`, `export`).
+- **`Crawler/nexora_crawler/tasks/dispatcher.py`** — In-process job dispatcher (no Celery); runs handlers in thread pool via `run_in_executor`.
+- **`Crawler/nexora_crawler/storage/local_sqlite.py`** — 9 tables (`pages`, `crawl_jobs` + 6 Phase 4C tables); `workspace_id` backfill; migration-before-DDL ordering.
+
 ### On-Demand Enrichment Rework + Debug Campaign (v4.4.0 – v4.5.0)
 - **`Crawler/nexora_crawler/settings.py`** — `NEXORA_ENRICH_MODE` flag (`"eager"` | `"on_demand"`). Conditional `ITEM_PIPELINES` (8 pipelines in on_demand, 11 in eager). `_anchored_path()` resolves relative DB/chroma paths against settings file directory. `NEXORA_AI_FAILFAST_THRESHOLD` and `NEXORA_AI_FALLBACK_*` settings for circuit breaker + provider fallback. `PLAYWRIGHT_ABORT_REQUEST` for route-level resource blocking.
-- **`Crawler/nexora_crawler/api.py`** — `enrich_mode` in `CrawlRequest`/`CrawlResponse`, `_normalize_enrich_mode()`, subprocess env forwarding, settings reload in `run_cli_direct()`. Now generates `crawl_id = uuid.uuid4().hex` per crawl.
+- **`Crawler/nexora_crawler/api/__init__.py`** — `enrich_mode` in `CrawlRequest`/`CrawlResponse`, `_normalize_enrich_mode()`, subprocess env forwarding, settings reload in `run_cli_direct()`. Generates `crawl_id = uuid.uuid4().hex` per crawl. Lifespan hook auto-migrates database.
 - **`Crawler/nexora_crawler/spiders/nexora_spider.py`** — Accepts `crawl_id` parameter; `CloseSpider` on `max_pages` cap.
 - **`Crawler/nexora_crawler/storage/local_sqlite.py`** — `_migrate_schema()` (markdown_preview→markdown), `_limit_clause()` (None-safe LIMIT), `get_unenriched_pages()`, `update_enrichment()`.
 - **`Crawler/nexora_crawler/items.py`** — `vector_backend`, `ai_status` fields. Removed non-functional mangled `__skip` field.
