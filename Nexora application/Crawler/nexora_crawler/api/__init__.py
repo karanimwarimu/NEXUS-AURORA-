@@ -96,6 +96,10 @@ class CrawlRequest(BaseModel):
             "offline `enrich.py` command. Omit to use the server default."
         ),
     )
+    workspace_id: str = Field(
+        default="default",
+        description="Workspace identifier for multi-tenancy",
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -121,6 +125,7 @@ class CrawlResponse(BaseModel):
     started_at: str
     completed_at: str | None = None
     message: str
+    workspace_id: str = "default"
 
 
 # ── In-memory job store (replace with Redis/DB in production) ──────────────
@@ -167,13 +172,14 @@ app.add_middleware(
 )
 
 # Phase 4C routers
-from nexora_crawler.api.routes import search, webhooks, jobs, gdpr, extract, health  # noqa: E402
+from nexora_crawler.api.routes import search, webhooks, jobs, gdpr, extract, health, auth  # noqa: E402
 app.include_router(search.router)
 app.include_router(webhooks.router)
 app.include_router(jobs.router)
 app.include_router(gdpr.router)
 app.include_router(extract.router)
 app.include_router(health.router)
+app.include_router(auth.router)
 
 
 @app.get("/")
@@ -228,12 +234,13 @@ async def start_crawl(request: CrawlRequest):
         output_dir="output/",
         started_at=datetime.now().isoformat(),
         message=f"Crawl started with strategy '{request.strategy}'",
+        workspace_id=request.workspace_id,
     )
     _jobs[job_id] = job
 
     # Run crawl in background (non-blocking)
     asyncio.create_task(
-        _run_crawl(job_id, url_str, request.strategy, request.max_pages, request.enrich_mode)
+        _run_crawl(job_id, url_str, request.strategy, request.max_pages, request.enrich_mode, request.workspace_id)
     )
 
     return job
@@ -248,15 +255,18 @@ async def get_job(job_id: str):
 
 
 @app.get("/jobs")
-async def list_jobs():
-    """List all crawl jobs."""
-    return {"jobs": list(_jobs.values())}
+async def list_jobs(workspace_id: str = "default"):
+    """List crawl jobs, optionally filtered by workspace."""
+    if workspace_id == "default":
+        return {"jobs": list(_jobs.values())}
+    return {"jobs": [j for j in _jobs.values() if j.workspace_id == workspace_id]}
+    return {"jobs": [j for j in _jobs.values() if getattr(j, "workspace_id", "default") == workspace_id]}
 
 
 # ── Internal Crawl Runner ──────────────────────────────────────────────────
 
 async def _run_crawl(job_id: str, url: str, strategy: str, max_pages: int,
-                    enrich_mode: str | None = None):
+                    enrich_mode: str | None = None, workspace_id: str = "default"):
     """Execute a Scrapy crawl as an isolated subprocess.
 
     Runs each job in its own process so:
@@ -272,8 +282,8 @@ async def _run_crawl(job_id: str, url: str, strategy: str, max_pages: int,
     import sys
 
     job = _jobs[job_id]
-    log.info("[%s] Starting crawl: %s | strategy=%s | enrich_mode=%s",
-             job_id, url, strategy, enrich_mode)
+    log.info("[%s] Starting crawl: %s | strategy=%s | enrich_mode=%s | workspace=%s",
+             job_id, url, strategy, enrich_mode, workspace_id)
 
     api_script = os.path.join(_PROJECT_ROOT, "nexora_crawler", "__main__.py")
     env = os.environ.copy()
@@ -283,10 +293,12 @@ async def _run_crawl(job_id: str, url: str, strategy: str, max_pages: int,
     _norm = _normalize_enrich_mode(enrich_mode)
     if _norm:
         env["NEXORA_ENRICH_MODE"] = _norm
+    env["NEXORA_WORKSPACE_ID"] = workspace_id
 
     cmd = [
         sys.executable, api_script,
         "--url", url, "--strategy", strategy, "--max-pages", str(max_pages),
+        "--workspace-id", workspace_id,
     ]
     if _norm:
         cmd += ["--enrich-mode", _norm]
@@ -347,18 +359,11 @@ STRATEGY_DESCRIPTIONS = {
 
 def _print_banner():
     print(r"""
-    ╔═══════════════════════════════════════════════════════════════╗
-    ║                                                               ║
-    ║   ███╗   ██╗███████╗██╗  ██╗ ██████╗ ██████╗  █████╗        ║
-    ║   ████╗  ██║██╔════╝╚██╗██╔╝██╔═══██╗██╔══██╗██╔══██╗       ║
-    ║   ██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║██████╔╝███████║       ║
-    ║   ██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║██╔══██╗██╔══██║       ║
-    ║   ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝██║  ██║██║  ██║       ║
-    ║   ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝       ║
-    ║                                                               ║
-    ║              Automated Web Crawler — Phase 2.6                ║
-    ║                                                               ║
-    ╚═══════════════════════════════════════════════════════════════╝
+    +---------------------------------------------------------------+
+    |                                                               |
+    |   Automated Web Crawler — Phase 2.6                          |
+    |                                                               |
+    +---------------------------------------------------------------+
     """)
 
 
@@ -402,7 +407,7 @@ def _prompt_max_pages() -> int:
 
 
 def _run_crawl_subprocess(url: str, strategy: str, max_pages: int,
-                           enrich_mode: str | None = None) -> int:
+                           enrich_mode: str | None = None, workspace_id: str = "default") -> int:
     """
     Run a single crawl in a *separate process* (fresh Twisted reactor each time).
 
@@ -426,14 +431,16 @@ def _run_crawl_subprocess(url: str, strategy: str, max_pages: int,
     _norm = _normalize_enrich_mode(enrich_mode)
     if _norm:
         env["NEXORA_ENRICH_MODE"] = _norm
+    env["NEXORA_WORKSPACE_ID"] = workspace_id
 
     cmd = [
         sys.executable, api_script,
         "--url", url, "--strategy", strategy, "--max-pages", str(max_pages),
+        "--workspace-id", workspace_id,
     ]
     if _norm:
         cmd += ["--enrich-mode", _norm]
-    log.info("[cli] spawning crawl subprocess: %s (enrich_mode=%s)", " ".join(cmd), _norm)
+    log.info("[cli] spawning crawl subprocess: %s (enrich_mode=%s, workspace=%s)", " ".join(cmd), _norm, workspace_id)
     result = subprocess.run(cmd, check=False, env=env)
     return result.returncode
 
@@ -451,6 +458,13 @@ def _prompt_enrich_mode() -> str | None:
     return None
 
 
+def _prompt_workspace_id() -> str:
+    """Prompt for workspace ID; Enter = default."""
+    default = "default"
+    user = input(f"\n🏢 Workspace ID [{default}]: ").strip()
+    return user if user else default
+
+
 def run_cli_interactive():
     """Interactive CLI REPL — prompt, crawl, then ask to run another.
 
@@ -466,15 +480,17 @@ def run_cli_interactive():
             strategy = _prompt_strategy()
             max_pages = _prompt_max_pages()
             enrich_mode = _prompt_enrich_mode()
+            workspace_id = _prompt_workspace_id()
 
             print(f"\n⚙️  Configuration:")
             print(f"   URL      : {url}")
             print(f"   Strategy : {STRATEGY_DESCRIPTIONS[strategy]['name']}")
             print(f"   Max pages: {max_pages}")
+            print(f"   Workspace: {workspace_id}")
             print(f"   Enrich   : {enrich_mode or 'default (on_demand)'}")
             print(f"\n🚀 Starting crawl...\n")
 
-            code = _run_crawl_subprocess(url, strategy, max_pages, enrich_mode)
+            code = _run_crawl_subprocess(url, strategy, max_pages, enrich_mode, workspace_id)
             if code == 0:
                 print("\n✅ Crawl finished. Check output/ directory for results.")
             else:
@@ -493,7 +509,7 @@ def run_cli_interactive():
             break
 
 
-def run_cli_direct(url: str, strategy: str, max_pages: int, enrich_mode: str | None = None):
+def run_cli_direct(url: str, strategy: str, max_pages: int, enrich_mode: str | None = None, workspace_id: str = "default"):
     """Direct CLI entrypoint (no prompts, for scripting)."""
     # settings.py is imported at module load (before argparse reads --enrich-mode),
     # so re-evaluate it now that the env var is known. The subprocess paths don't
@@ -508,14 +524,15 @@ def run_cli_direct(url: str, strategy: str, max_pages: int, enrich_mode: str | N
     print(f"🚀 Starting crawl: {url}")
     print(f"   Strategy : {STRATEGY_DESCRIPTIONS[strategy]['name']}")
     print(f"   Max pages: {max_pages}")
+    print(f"   Workspace: {workspace_id}")
     print(f"   Enrich   : {_norm or 'default (on_demand)'}\n")
 
-    _run_crawl_sync(url, strategy, max_pages)
+    _run_crawl_sync(url, strategy, max_pages, workspace_id)
 
     print("\n✅ Crawl finished. Check output/ directory for results.")
 
 
-def _run_crawl_sync(url: str, strategy: str, max_pages: int):
+def _run_crawl_sync(url: str, strategy: str, max_pages: int, workspace_id: str = "default"):
     """Synchronous crawl execution for CLI modes."""
     settings = get_project_settings()
     settings.set("LOG_LEVEL", "INFO")
@@ -528,7 +545,7 @@ def _run_crawl_sync(url: str, strategy: str, max_pages: int):
         strategy=strategy,
         max_pages=max_pages,
         crawl_id=crawl_id,
-        workspace_id="default",
+        workspace_id=workspace_id,
     )
     process.start()
 
@@ -584,6 +601,10 @@ Examples:
         help="When AI enrichment runs: 'eager' inline, 'on_demand' deferred "
              "to enrich.py (default: server setting -> on_demand)"
     )
+    parser.add_argument(
+        "--workspace-id", default="default",
+        help="Workspace identifier for multi-tenancy (default: default)"
+    )
 
     args = parser.parse_args()
 
@@ -591,15 +612,15 @@ Examples:
     if args.server:
         from nexora_crawler.settings import NEXORA_API_WORKERS
         print(f"""
-    ╔═══════════════════════════════════════════════════════════════╗
-    ║                                                               ║
-    ║              Nexora Crawler API Server                        ║
-    ║                                                               ║
-    ║   📡 Server: http://{args.host}:{args.port}                    ║
-    ║   📖 Docs:   http://{args.host}:{args.port}/docs               ║
-    ║                                                               ║
-    ║   Press Ctrl+C to stop                                        ║
-    ╚═══════════════════════════════════════════════════════════════╝
+    +---------------------------------------------------------------+
+    |                                                               |
+    |              Nexora Crawler API Server                        |
+    |                                                               |
+    |   Server: http://{args.host}:{args.port}                    |
+    |   Docs:   http://{args.host}:{args.port}/docs               |
+    |                                                               |
+    |   Press Ctrl+C to stop                                        |
+    +---------------------------------------------------------------+
         """)
         uvicorn.run(
             "nexora_crawler.api:app",
@@ -613,7 +634,7 @@ Examples:
 
     # ── Mode 2: Direct CLI (no prompts) ──────────────────────────────────
     if args.url:
-        run_cli_direct(args.url, args.strategy, args.max_pages, args.enrich_mode)
+        run_cli_direct(args.url, args.strategy, args.max_pages, args.enrich_mode, args.workspace_id)
         return
 
     # ── Mode 3: Interactive CLI (default) ────────────────────────────────

@@ -54,3 +54,10 @@ Nexora application/tests/.pytest_cache/
 .env.local
 .env.*
 !.env.example
+
+# Virtual environments
+venv/
+nexora venv/
+.venv/
+ENV/
+env/

@@ -1,8 +1,8 @@
-# NEXUS AURORA v4.5.0
+# NEXUS AURORA v4.6.0
 
 > AI-powered website intelligence platform with static-first routing, browser-aware extraction, multi-format storage engine, on-demand AI enrichment (default), eager inline enrichment (fallback), and vector indexing for production-grade RAG and web intelligence workflows.
 
-[![Version](https://img.shields.io/badge/version-4.5.0-blue)]()
+[![Version](https://img.shields.io/badge/version-4.6.0-blue)]()
 [![Python](https://img.shields.io/badge/python-3.11+-green)]()
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
 [![Status](https://img.shields.io/badge/status-phase%204C%20hardened-brightgreen)]()
@@ -12,7 +12,8 @@
 ## Table of Contents
 
 - [Overview](#overview)
-- [What's New in v4.5.0](#whats-new-in-v450)
+- [What's New in v4.6.0](#whats-new-in-v460)
+- [Phase-Based Documentation](#phase-based-documentation)
 - [Features](#features)
 - [Architecture](#architecture)
   - [Complete Pipeline Chain](#complete-pipeline-chain)
@@ -102,6 +103,21 @@ On top of the Phase 4A storage engine, **v4.3.0 completes Phase 4B verification*
 | **Verification scripts** | `test_ai.py`, `test_ai_direct_hf.py` (connectivity), `test_vector_store.py` (proves embeddings are stored & retrieveable in Chroma) |
 | **Model-switch guide** | `Project Tools/switch_model_guide.md` — change model/provider/backend with zero code changes |
 | **Bug fixes** | Added missing `NexoraChunk.source_type`; fixed `ChromaVectorStore.add()` metadata serialization; synced `.env` to `settings.py` |
+
+---
+
+## Phase-Based Documentation
+
+All development phases are organized in the `phases/` directory for cleaner navigation and easier project organization:
+
+- **[Phase 1: Single Page Extraction](phases/PHASE_1_EXTRACTION/README.md)** — Basic webpage extraction and parsing
+- **[Phase 2: Scrapy Crawler](phases/PHASE_2_CRAWLER/README.md)** — Multi-page crawling with style extraction
+- **[Phase 3: Dynamic Detection](phases/PHASE_3_DETECTION/README.md)** — Intelligent JS vs. Static routing
+- **[Phase 4A: Storage & Multi-Format Export](phases/PHASE_4A_STORAGE/README.md)** — Markdown, Parquet, SQLite ingestion
+- **[Phase 4B: AI Enrichment & Vector Indexing](phases/PHASE_4B_AI_ENRICHMENT/README.md)** — LLM summaries, embeddings, chunking
+- **[Phase 4C: API Infrastructure & Multi-Tenancy](phases/PHASE_4C_API_INFRASTRUCTURE/README.md)** — FastAPI, JWT, webhooks, jobs, GDPR
+
+Each phase directory contains documentation, tests, audits, reports, checklists, and release notes. **Quick start:** See the phase README or check `phases/PHASE_4C_API_INFRASTRUCTURE/checklists/PHASE_5_READINESS_GATE.md` for current status.
 
 ---
 

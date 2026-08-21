@@ -8,13 +8,59 @@
 ├── LICENSE
 ├── README.md
 ├── REPOSITORY_STRUCTURE.md
-├── release_notes_v4.4.0.md                              ★ v4.4.0 release notes
-├── release_notes_v4.5.0.md                              ★ v4.5.0 release notes
-├── release_notes_v4.6.0.md                              ★ new: v4.6.0 release notes
+│
+├── phases/                                               📂 Phase-based organization
+│   ├── PHASE_1_EXTRACTION/
+│   │   ├── README.md
+│   │   ├── docs/
+│   │   ├── tests/
+│   │   ├── audits/
+│   │   └── release_notes/
+│   │
+│   ├── PHASE_2_CRAWLER/
+│   │   ├── README.md
+│   │   ├── docs/
+│   │   ├── tests/
+│   │   ├── audits/
+│   │   └── release_notes/
+│   │
+│   ├── PHASE_3_DETECTION/
+│   │   ├── README.md
+│   │   ├── docs/
+│   │   ├── tests/
+│   │   ├── audits/
+│   │   ├── reports/
+│   │   └── release_notes/
+│   │
+│   ├── PHASE_4A_STORAGE/
+│   │   ├── README.md
+│   │   ├── docs/
+│   │   ├── tests/
+│   │   ├── audits/
+│   │   ├── reports/
+│   │   └── release_notes/
+│   │
+│   ├── PHASE_4B_AI_ENRICHMENT/
+│   │   ├── README.md
+│   │   ├── docs/
+│   │   ├── tests/
+│   │   ├── audits/
+│   │   ├── reports/
+│   │   └── release_notes/
+│   │
+│   └── PHASE_4C_API_INFRASTRUCTURE/
+│       ├── README.md
+│       ├── docs/
+│       ├── tests/
+│       ├── audits/
+│       ├── reports/
+│       ├── checklists/
+│       └── release_notes/
+│
 ├── Nexora application/
 │   ├── application documents/
-│   │   ├── requirements.txt
-│   │   └── release_notes_v4.6.0.md                      ★ v4.6.0 release notes
+│   │   ├── README.md
+│   │   └── requirements.txt
 │   ├── Crawler/
 │   │   ├── __init__.py
 │   │   ├── scrapy.cfg
@@ -101,8 +147,6 @@
 │   ├── tests/
 │   │   ├── test_phase4a.py                              ← Phase 4A: 18-test suite
 │   │   └── ... (Phase 3 live-site / benchmark scripts)
-│   ├── release_notes_v4.1.0.md
-│   └── release_notes_v4.4.0.md                          ★ v4.4.0 release notes
 ├── data/
 │   ├── test_profiles.db                                 ← SQLite site profile cache
 │   ├── nexora_metadata.db                               ← Phase 4A/4C: SQLite metadata store (9 tables)
@@ -110,16 +154,10 @@
 └── Project Tools/
     ├── switch_model_guide.md                            ← Phase 4B: model/provider/backend switch guide
     ├── competitive_analysis_nexora_vs_industry.md
-    ├── Phase 1 Documentation/
-    ├── Phase 2 Documentation/
-    ├── Phase 3 Documentation/
-    ├── Phase 4 Documentation/
-    │   └── release_notes_v4.1.0.md                      ← prior release notes
-    ├── Phase 5 Documentation/
-    ├── Phase 6 Documentation/
-    ├── Phase 7 Documentation/
-    └── Studytools/
+    └── ... (legacy phase documentation - see phases/ for organized structure)
 ```
+
+**Note:** All release notes, audits, tests, and documentation are now organized by phase in the `phases/` directory structure at the root level for better navigation and maintainability.
 
 ## Key Components
 

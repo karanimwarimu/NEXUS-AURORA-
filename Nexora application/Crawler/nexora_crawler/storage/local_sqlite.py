@@ -11,6 +11,8 @@ import logging
 import sqlite3
 from typing import List, Dict, Optional
 
+from nexora_crawler.settings import NEXORA_METADATA_DB
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,9 +22,9 @@ class MetadataStore:
     Tables: pages, crawl_jobs
     """
 
-    def __init__(self, db_path: str = "./data/nexora_metadata.db"):
-        self.db_path = db_path
-        os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
+    def __init__(self, db_path: str = None):
+        self.db_path = db_path or NEXORA_METADATA_DB
+        os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
         self._init_schema()
 
     def _init_schema(self):
@@ -160,6 +162,17 @@ class MetadataStore:
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_extraction_schemas_workspace ON extraction_schemas(workspace_id);
+
+                -- Phase 4C: API keys for service account auth
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    id TEXT PRIMARY KEY,
+                    workspace_id TEXT NOT NULL,
+                    key_hash TEXT NOT NULL,
+                    name TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_api_keys_workspace ON api_keys(workspace_id);
             """)
             conn.commit()
         logger.info("[MetadataStore] Schema initialized at %s", self.db_path)
@@ -173,6 +186,15 @@ class MetadataStore:
         - add workspace_id column to pages and crawl_jobs (Phase 4C integration)
         """
         with sqlite3.connect(self.db_path) as conn:
+            # Check if tables exist FIRST. Only run migrations on existing tables.
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            existing_tables = {row[0] for row in cursor.fetchall()}
+            
+            # Only migrate if pages table exists (fresh DB doesn't need migration)
+            if "pages" not in existing_tables:
+                logger.debug("[MetadataStore] Fresh database detected - skipping migrations")
+                return
+            
             # --- pages table migrations ---
             cols = {row[1] for row in conn.execute("PRAGMA table_info(pages)").fetchall()}
 
@@ -337,3 +359,69 @@ class MetadataStore:
                 "SELECT COUNT(DISTINCT domain) FROM pages"
             ).fetchone()[0]
             return {"total_pages": total, "unique_domains": domains}
+
+    def create_api_key(self, key_id: str, workspace_id: str, key_hash: str, name: str = "") -> bool:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "INSERT INTO api_keys (id, workspace_id, key_hash, name) VALUES (?, ?, ?, ?)",
+                    (key_id, workspace_id, key_hash, name),
+                )
+                conn.commit()
+            return True
+        except Exception as exc:
+            logger.error("[MetadataStore] create_api_key failed: %s", exc)
+            return False
+
+    def list_api_keys(self, workspace_id: str) -> List[Dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT id, workspace_id, name, is_active, created_at FROM api_keys WHERE workspace_id = ? ORDER BY created_at DESC",
+                (workspace_id,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def revoke_api_key(self, key_id: str, workspace_id: str) -> bool:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "UPDATE api_keys SET is_active = 0 WHERE id = ? AND workspace_id = ?",
+                    (key_id, workspace_id),
+                )
+                conn.commit()
+            return True
+        except Exception as exc:
+            logger.error("[MetadataStore] revoke_api_key failed: %s", exc)
+            return False
+
+    def get_api_key_hash(self, key_id: str) -> Optional[str]:
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT key_hash FROM api_keys WHERE id = ? AND is_active = 1",
+                (key_id,),
+            ).fetchone()
+            return row[0] if row else None
+
+    def get_api_key_by_id(self, key_id: str, active_only: bool = True) -> Optional[Dict]:
+        """
+        Retrieve API key by ID.
+        
+        Args:
+            key_id: API key ID (first part of the key_id.raw_key format)
+            active_only: If True, only return active keys (default: True for security)
+        
+        Returns:
+            Dict with key metadata (id, workspace_id, name, is_active, created_at)
+            or None if not found / inactive.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            query = "SELECT id, workspace_id, name, is_active, created_at FROM api_keys WHERE id = ?"
+            params = [key_id]
+            
+            if active_only:
+                query += " AND is_active = 1"
+            
+            row = conn.execute(query, params).fetchone()
+            return dict(row) if row else None
